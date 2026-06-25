@@ -102,6 +102,14 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 .srcline:last-child{border-bottom:none}
 .srcline .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:20px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:20;white-space:nowrap;max-width:90%;text-align:center}
+.remind{background:var(--fix-soft);border:1px solid #E8D9A8;border-radius:var(--radius);padding:12px;margin-bottom:12px}
+.remind h4{font-size:13px;font-weight:700;color:#8A6D1B;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.remind .ritem{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #ECDFBB}
+.remind .ritem:first-of-type{border-top:none}
+.remind .rname{flex:1;font-size:13px;font-weight:600;color:var(--ink);min-width:0}
+.remind .rname small{display:block;font-weight:400;color:var(--ink-soft);font-size:11px}
+.remind input{width:90px;padding:8px;font-size:15px;border:1px solid #D9C97F;border-radius:7px;text-align:right;font-family:var(--mono)}
+.remind .rsave{flex:none;background:var(--fix);color:#fff;border:none;border-radius:7px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer}
 .toast.show{opacity:1}
 .leg{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--ink-soft)}
 .leg span{display:flex;align-items:center;gap:5px}
@@ -135,6 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <main>
   <section id="tab-list">
+    <div id="reminderBox"></div>
     <div class="filterbar" id="filterbar"></div>
     <div id="listBody"></div>
   </section>
@@ -196,7 +205,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <input id="mDesc" placeholder="z.B. Wohnungsmiete, Krankenkasse">
 
     <div class="row2">
-      <div><label>Betrag (CHF)</label><input id="mAmount" type="number" inputmode="decimal" step="0.05" placeholder="250.00"></div>
+      <div><label id="amountLabel">Betrag (CHF)</label><input id="mAmount" type="number" inputmode="decimal" step="0.05" placeholder="250.00"></div>
       <div><label>Datum</label><input id="mDate" type="date"></div>
     </div>
 
@@ -209,13 +218,15 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <button class="fix" onclick="setFlag(true)">Zwingend</button>
       <button class="var on" onclick="setFlag(false)">Optional</button>
     </div>
-    <div class="hint">Zwingend = Fixkosten, die du nicht vermeiden kannst (Miete, Versicherung). Optional = variable Kosten (Freizeit, Sonstiges).</div>
+    <div class="hint">Zwingend = Fixkosten, die du nicht vermeiden kannst (Miete, Versicherung, Strom). Optional = Kosten, die du beeinflussen kannst (Freizeit, Sonstiges).</div>
 
     <label style="margin-top:12px">Wiederholung</label>
-    <select id="mRepeat">
+    <select id="mRepeat" onchange="onRepeatChange()">
       <option value="once">Einmalig</option>
-      <option value="monthly">Jeden Monat (ab Datum bis heute)</option>
+      <option value="monthly">Jeden Monat – fixer Betrag</option>
+      <option value="variable">Jeden Monat – variabler Betrag (Schätzwert)</option>
     </select>
+    <div class="hint" id="repeatHint" hidden>Der eingegebene Betrag gilt als <b>Schätzwert</b>. Jeden Monat erinnert dich die App beim Öffnen, den echten Betrag einzutragen. Bis dahin rechnet sie mit dem Schätzwert.</div>
 
     <label>Notiz</label>
     <input id="mNote" placeholder="optional">
@@ -383,22 +394,46 @@ async function importAll(){
 
 /* ============ Kombinierte Daten ============ */
 function manExpanded(){
-  // monatlich wiederholende manuelle Einträge zu Einzelmonaten auffächern
+  // wiederkehrende manuelle Einträge zu Einzelmonaten auffächern
   const out=[], cur=thisMonth();
   MAN.forEach(m=>{
-    if(m.repeat==='monthly' && m.date){
+    if((m.repeat==='monthly' || m.repeat==='variable') && m.date){
+      const isVar = m.repeat==='variable';
+      const acts = m.actuals||{};
       let k=m.date.slice(0,7); let g=0;
       while(k<=cur && g++<600){
-        out.push({ id:m.id+'_'+k, baseId:m.id, src:'man', desc:m.desc, amount:+m.amount||0,
-          date:k+'-'+(m.date.slice(8)||'01'), cat:m.cat, fix:!!m.fix, note:m.note||'', repeat:'monthly' });
+        let amount, est=false;
+        if(isVar){
+          if(acts[k]!=null && acts[k]!==''){ amount=+acts[k]||0; est=false; }
+          else { amount=+m.amount||0; est=true; }   // Schätzwert bis echter Betrag da ist
+        }else{
+          amount=+m.amount||0;
+        }
+        out.push({ id:m.id+'_'+k, baseId:m.id, src:'man', desc:m.desc, amount,
+          date:k+'-'+(m.date.slice(8)||'01'), cat:m.cat, fix:!!m.fix, note:m.note||'',
+          repeat:m.repeat, est, monthKey:k });
         k=nextMonthK(k);
       }
     }else{
       out.push({ id:m.id, baseId:m.id, src:'man', desc:m.desc, amount:+m.amount||0,
-        date:m.date, cat:m.cat, fix:!!m.fix, note:m.note||'', repeat:'once' });
+        date:m.date, cat:m.cat, fix:!!m.fix, note:m.note||'', repeat:'once', est:false });
     }
   });
   return out;
+}
+/* offene variable Posten für laufenden + vergangene Monate (echter Betrag fehlt noch) */
+function openVariables(){
+  const cur=thisMonth(); const open=[];
+  MAN.forEach(m=>{
+    if(m.repeat!=='variable' || !m.date) return;
+    const acts=m.actuals||{};
+    let k=m.date.slice(0,7); let g=0;
+    while(k<=cur && g++<600){
+      if(acts[k]==null || acts[k]===''){ open.push({base:m, monthKey:k}); }
+      k=nextMonthK(k);
+    }
+  });
+  return open;
 }
 function allEntries(){ return IMP.concat(manExpanded()); }
 function inPeriod(d){
@@ -468,11 +503,13 @@ function renderList(){
       const tagLabel = e.src==='fuel'?'AUTO':e.src==='house'?'HAUS':'MAN';
       const editable = e.src==='man';
       const sub = [fmtDate(e.date), e.cat, e.note].filter(Boolean).join(' · ');
-      html += `<div class="entry" ${editable?`onclick="openSheet('${e.baseId}')"`:''} style="${editable?'':'cursor:default'}">
+      const estMark = e.est ? '<span style="color:var(--fix);font-family:var(--mono);font-size:11px"> ≈ Schätzwert</span>' : '';
+      const clickAttr = editable ? `onclick="openSheet('${e.baseId}')"` : '';
+      html += `<div class="entry" ${clickAttr} style="${editable?'':'cursor:default'}">
         <span class="tag ${tagClass}">${tagLabel}</span>
         <div class="mid">
           <div class="t1">${e.fix?'<span class="fixdot" title="Zwingend"></span>':''}${esc(e.desc)}</div>
-          <div class="t2">${esc(sub)}</div>
+          <div class="t2">${esc(sub)}${estMark}</div>
         </div>
         <div class="amt">${CHF(e.amount)}${editable?'':'<div class="locked">↻ Import</div>'}</div>
       </div>`;
@@ -481,6 +518,39 @@ function renderList(){
   body.innerHTML = html;
 }
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ===== Erinnerung für variable Posten ===== */
+function renderReminder(){
+  const box=document.getElementById('reminderBox');
+  if(!box) return;
+  const open=openVariables();
+  if(!open.length){ box.innerHTML=''; return; }
+  // nur laufender + vergangene offene Monate; nach Eintrag gruppiert die jüngsten zuerst
+  let html=`<div class="remind"><h4>⏳ Variable Kosten – echten Betrag eintragen</h4>`;
+  open.sort((a,b)=>b.monthKey.localeCompare(a.monthKey));
+  open.forEach(o=>{
+    const est=+o.base.amount||0;
+    html+=`<div class="ritem">
+      <div class="rname">${esc(o.base.desc)}
+        <small>${monthName(o.monthKey)} · Schätzwert ${CHF(est)}</small></div>
+      <input type="number" inputmode="decimal" step="0.05" placeholder="${est.toFixed(2)}"
+        id="rin_${o.base.id}_${o.monthKey}">
+      <button class="rsave" onclick="saveActual('${o.base.id}','${o.monthKey}')">OK</button>
+    </div>`;
+  });
+  html+=`</div>`;
+  box.innerHTML=html;
+}
+function saveActual(baseId, monthKey){
+  const inp=document.getElementById('rin_'+baseId+'_'+monthKey);
+  const val=parseFloat(inp.value);
+  if(!(val>=0)){ toast('Bitte einen Betrag eingeben'); inp.focus(); return; }
+  const m=MAN.find(x=>x.id===baseId);
+  if(!m) return;
+  if(!m.actuals) m.actuals={};
+  m.actuals[monthKey]=Math.round(val*100)/100;
+  persist(); renderAll(); toast(m.desc+' · '+monthName(monthKey)+': '+CHF(val));
+}
 
 /* ============ Statistik ============ */
 function renderStats(){
@@ -614,7 +684,15 @@ function openSheet(id){
     document.getElementById('mRepeat').value='once';
     fillCatSelect(CATS[0]); setFlag(false);
   }
+  onRepeatChange();
   document.getElementById('overlay').classList.add('open');
+}
+function onRepeatChange(){
+  const rep=document.getElementById('mRepeat').value;
+  document.getElementById('repeatHint').hidden = (rep!=='variable');
+  // Betrags-Label kontextabhängig beschriften
+  const amountLabel = document.getElementById('amountLabel');
+  if(amountLabel) amountLabel.textContent = rep==='variable' ? 'Schätzwert (CHF)' : 'Betrag (CHF)';
 }
 function closeSheet(){ document.getElementById('overlay').classList.remove('open'); editId=null; }
 function saveEntry(){
@@ -632,7 +710,9 @@ function saveEntry(){
     if(!CATS.includes(cat)) CATS.push(cat);
   }
   const wasEdit=!!editId;
+  const prev = editId ? MAN.find(x=>x.id===editId) : null;
   const obj={ id:editId||uid(), desc, amount, date, cat, fix:curFlag, note, repeat };
+  if(repeat==='variable'){ obj.actuals = (prev && prev.actuals) ? prev.actuals : {}; }
   if(editId){ const i=MAN.findIndex(x=>x.id===editId); MAN[i]=obj; } else MAN.push(obj);
   persist(); renderAll(); closeSheet(); toast(wasEdit?'Eintrag aktualisiert':'Eintrag hinzugefügt');
 }
@@ -687,7 +767,7 @@ function renderSrcCounts(){
   document.getElementById('srcMan').textContent = MAN.length+(MAN.length===1?' Eintrag':' Einträge');
 }
 function renderAll(){
-  renderHeader(); renderFilters(); renderList(); renderSrcCounts();
+  renderHeader(); renderReminder(); renderFilters(); renderList(); renderSrcCounts();
   if(!document.getElementById('tab-stats').hidden) renderStats();
 }
 document.querySelectorAll('nav button').forEach(btn=>{
