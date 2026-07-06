@@ -1,0 +1,111 @@
+{
+  "MAN": [
+    {
+      "id": "mqoydjx14tzl",
+      "desc": "Fresskasse",
+      "amount": 50,
+      "date": "2026-07-01",
+      "cat": "Freizeit",
+      "fix": false,
+      "note": "",
+      "repeat": "monthly"
+    },
+    {
+      "id": "mqs76fun9m9e",
+      "desc": "Sunrise Mobile und Internet",
+      "amount": 112.75,
+      "date": "2026-06-26",
+      "cat": "Abos / Streaming",
+      "fix": false,
+      "note": "",
+      "repeat": "monthly"
+    },
+    {
+      "id": "mqs7m3cqpwn1",
+      "desc": "Krankenkasse Concordia",
+      "amount": 361.3,
+      "date": "2026-07-01",
+      "cat": "Versicherungen",
+      "fix": false,
+      "note": "",
+      "repeat": "monthly"
+    },
+    {
+      "id": "mr6cc5mhkvhr",
+      "desc": "Claude.ai",
+      "amount": 18.13,
+      "date": "2026-06-04",
+      "cat": "IT",
+      "fix": false,
+      "note": "",
+      "repeat": "monthly"
+    },
+    {
+      "id": "mr6cd9ymvd9l",
+      "desc": "Fresskasse",
+      "amount": 50,
+      "date": "2026-01-01",
+      "cat": "Freizeit",
+      "fix": false,
+      "note": "",
+      "repeat": "monthly"
+    },
+    {
+      "id": "mr6cekdyi7u1",
+      "desc": "Nebenkosten",
+      "amount": 3107,
+      "date": "2026-07-01",
+      "cat": "Miete / Wohnen",
+      "fix": true,
+      "note": "",
+      "repeat": "once"
+    },
+    {
+      "id": "mr6cjhst4fgu",
+      "desc": "Hypozins",
+      "amount": 434.14,
+      "date": "2026-01-31",
+      "cat": "Miete / Wohnen",
+      "fix": true,
+      "note": "",
+      "repeat": "monthly"
+    },
+    {
+      "id": "mr6ckgct69po",
+      "desc": "Bitdefender Antivirus",
+      "amount": 106.29,
+      "date": "2026-07-04",
+      "cat": "IT",
+      "fix": false,
+      "note": "",
+      "repeat": "once"
+    },
+    {
+      "id": "mr6clzgxvx9e",
+      "desc": "Barbezug",
+      "amount": 300,
+      "date": "2026-06-11",
+      "cat": "Bargeld",
+      "fix": true,
+      "note": "",
+      "repeat": "once"
+    }
+  ],
+  "CATS": [
+    "Miete / Wohnen",
+    "Versicherungen",
+    "Abos / Streaming",
+    "Leasing",
+    "Gesundheit",
+    "Steuern",
+    "Freizeit",
+    "Sonstiges",
+    "IT",
+    "Bargeld"
+  ],
+  "GH": {
+    "owner": "roger-manser",
+    "hbRepo": "haushaltbuch",
+    "fbRepo": "fahrtenbuch."
+  }
+}

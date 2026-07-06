@@ -1,12 +1,13 @@
 /* Lebenskosten Service Worker */
-const CACHE = 'lebenskosten-v4';
+const CACHE = 'lebenskosten-v7';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+  './jsQR.js'
 ];
 
 self.addEventListener('install', e => {
@@ -36,7 +37,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   // jsQR-Bibliothek vom CDN cachen (für Offline-QR-Scan nach dem ersten Laden)
-  if (url.hostname === 'cdnjs.cloudflare.com') {
+  if (url.hostname === 'cdn.jsdelivr.net') {
     e.respondWith(
       caches.match(e.request).then(hit => hit || fetch(e.request).then(resp => {
         const copy = resp.clone();

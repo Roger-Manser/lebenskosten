@@ -124,6 +124,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.0 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -266,8 +267,10 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
+const APP_VERSION = 'v2.0';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
+let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
 let GH = { owner:'', token:'', hbRepo:'haushaltbuch', fbRepo:'fahrtenbuch' };
 /* importierte (read-only) Einträge, jeweils neu aus GitHub geholt: */
 let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
@@ -284,17 +287,23 @@ const fmtDate = d => { if(!d) return ''; const [y,m,dd]=d.split('-'); return dd+
 const monthName = k => new Date(k+'-01T12:00:00').toLocaleDateString('de-CH',{month:'long',year:'numeric'});
 
 /* ============ Speicherung ============ */
-function persist(){
-  try{ localStorage.setItem('lebenskosten1', JSON.stringify({MAN,CATS})); }catch(e){}
+function persist(bumpRev){
+  if(bumpRev!==false){ REV = (REV||0) + 1; }
+  try{ localStorage.setItem('lebenskosten1', JSON.stringify({MAN,CATS,rev:REV})); }catch(e){}
+  renderVersion();
 }
 function restore(){
   try{
     const raw = localStorage.getItem('lebenskosten1');
-    if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.MAN)) MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; }
+    if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.MAN)) MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=+d.rev||0; }
   }catch(e){}
   try{ const g=localStorage.getItem('lebenskostenGh'); if(g) GH=Object.assign(GH,JSON.parse(g)); }catch(e){}
   try{ const i=localStorage.getItem('lebenskostenImp'); if(i){const d=JSON.parse(i); if(Array.isArray(d)) IMP=d;} }catch(e){}
   try{ const p=localStorage.getItem('lebenskostenPeriod'); if(p) period=p; }catch(e){}
+}
+function renderVersion(){
+  const el=document.getElementById('verLabel');
+  if(el) el.textContent = APP_VERSION+' · Rev '+(REV||0);
 }
 function persistImp(){ try{ localStorage.setItem('lebenskostenImp', JSON.stringify(IMP)); }catch(e){} }
 
@@ -772,7 +781,7 @@ function download(name,content,type){
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},400);
 }
 function saveJSON(){
-  download('lebenskosten-'+today()+'.json', JSON.stringify({MAN,CATS,GH:{owner:GH.owner,hbRepo:GH.hbRepo,fbRepo:GH.fbRepo}},null,2), 'application/json');
+  download('lebenskosten-'+today()+'.json', JSON.stringify({MAN,CATS,rev:REV,GH:{owner:GH.owner,hbRepo:GH.hbRepo,fbRepo:GH.fbRepo}},null,2), 'application/json');
   toast('Gespeichert');
 }
 function loadJSON(ev){
@@ -782,6 +791,7 @@ function loadJSON(ev){
     const d=JSON.parse(r.result);
     if(Array.isArray(d.MAN)) MAN=d.MAN;
     if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS;
+    if(d.rev!=null) REV=+d.rev||0;
     if(d.GH){ GH.owner=d.GH.owner||GH.owner; GH.hbRepo=d.GH.hbRepo||GH.hbRepo; GH.fbRepo=d.GH.fbRepo||GH.fbRepo; loadGhConfig(); }
     persist(); renderAll(); toast('Geladen');
   }catch(e){ toast('Datei konnte nicht gelesen werden'); } };
@@ -828,18 +838,26 @@ let toastT;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
 
 /* ============ Start ============ */
-restore(); loadGhConfig(); renderAll();
+restore(); loadGhConfig(); renderAll(); renderVersion();
 
 /* ============ QR-Scan (Schweizer QR-Rechnung) ============ */
 let qrStream=null, qrRAF=null, qrLib=null;
 function loadJsQR(){
   return new Promise((res,rej)=>{
     if(window.jsQR){ qrLib=window.jsQR; return res(qrLib); }
-    const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';
-    s.onload=()=>{ qrLib=window.jsQR; res(qrLib); };
-    s.onerror=()=>rej(new Error('QR-Bibliothek konnte nicht geladen werden (Internet nötig)'));
-    document.head.appendChild(s);
+    // 1. Versuch: lokale Datei im selben Repo (firewall-sicher, offline)
+    const local=document.createElement('script');
+    local.src='jsQR.js';
+    local.onload=()=>{ if(window.jsQR){ qrLib=window.jsQR; res(qrLib); } else rej(new Error('jsQR.js geladen, aber ungültig')); };
+    local.onerror=()=>{
+      // 2. Fallback: CDN (falls lokale Datei fehlt und Internet/CDN frei ist)
+      const cdn=document.createElement('script');
+      cdn.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+      cdn.onload=()=>{ qrLib=window.jsQR; res(qrLib); };
+      cdn.onerror=()=>rej(new Error('jsQR.js nicht gefunden. Bitte die Datei ins Repo legen (siehe Anleitung).'));
+      document.head.appendChild(cdn);
+    };
+    document.head.appendChild(local);
   });
 }
 function qrHint(msg){ const el=document.getElementById('qrHint'); if(el) el.textContent=msg; }
