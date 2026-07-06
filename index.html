@@ -111,6 +111,15 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 .remind input{width:90px;padding:8px;font-size:15px;border:1px solid #D9C97F;border-radius:7px;text-align:right;font-family:var(--mono)}
 .remind .rsave{flex:none;background:var(--fix);color:#fff;border:none;border-radius:7px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer}
 #updateBanner{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:30;display:flex;align-items:center;gap:14px;background:var(--ink);color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:92%;font-size:14px;font-weight:600}
+#suggestBox{margin-top:4px}
+.sugg{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--accent-soft);border:1px solid #C5E0D4;border-radius:8px;margin-top:6px;cursor:pointer}
+.sugg:active{background:#D3E9DE}
+.sugg .stag{font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 6px;border-radius:5px;white-space:nowrap}
+.sugg .smid{flex:1;min-width:0}
+.sugg .st1{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sugg .st2{font-size:11px;color:var(--ink-soft);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sugg .samt{font-family:var(--mono);font-size:13px;font-weight:700}
+.sugghint{font-size:11px;color:var(--ink-soft);margin:6px 2px 0}
 #updateBanner button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
 .toast.show{opacity:1}
 .leg{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--ink-soft)}
@@ -126,7 +135,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.1 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.3 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -234,7 +243,8 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     </div>
 
     <label>Bezeichnung</label>
-    <input id="mDesc" placeholder="z.B. Wohnungsmiete, Krankenkasse">
+    <input id="mDesc" placeholder="z.B. Wohnungsmiete, Krankenkasse" oninput="onDescInput()" autocomplete="off">
+    <div id="suggestBox"></div>
 
     <div class="row2">
       <div><label id="amountLabel">Betrag (CHF)</label><input id="mAmount" type="number" inputmode="decimal" step="0.05" placeholder="250.00"></div>
@@ -291,7 +301,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v2.1';
+const APP_VERSION = 'v2.3';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -468,15 +478,18 @@ async function fetchRepoFile(repo, file){
   const j = await r.json();
   return { data: JSON.parse(b64Decode(j.content)) };
 }
-/* Haushaltbuch: alle Log-Einträge mit t==='in', Betrag = menge*preis */
+/* Haushaltbuch: alle Eingänge (t==='ein', auch 'in'), Betrag = menge*preis */
 function mapHaushalt(S){
   const out=[];
   const log = (S && Array.isArray(S.log)) ? S.log : [];
   log.forEach(e=>{
-    if(e.t!=='in') return;
+    // Eingang erkennen: 'ein' (deutsch) oder 'in' (alt); Ausgänge ('aus'/'out') ignorieren
+    const isEingang = (e.t==='ein' || e.t==='in');
+    if(!isEingang) return;
+    if(e.geloescht) return;                 // gelöschte Log-Einträge überspringen
     const menge = +e.menge||0, preis = +e.preis||0;
     const amount = Math.round(menge*preis*100)/100;
-    if(!(amount>0)) return;
+    if(!(amount>0)) return;                  // Einträge ohne Preis (z.B. Bestandskorrektur) nicht als Kosten
     out.push({
       id:'hb_'+(e.zeit||uid()),
       src:'house',
@@ -853,7 +866,89 @@ function openSheet(id){
     fillCatSelect(CATS[0]); setFlag(false);
   }
   onRepeatChange();
+  document.getElementById('suggestBox').innerHTML='';
   document.getElementById('overlay').classList.add('open');
+}
+
+/* ===== Ähnliche Einträge vorschlagen ===== */
+function normStr(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,''); }
+function similarity(a,b){
+  a=normStr(a); b=normStr(b);
+  if(!a||!b) return 0;
+  if(a===b) return 1;
+  if(a.includes(b)||b.includes(a)) return 0.85;
+  // gemeinsamer Präfix
+  let p=0; while(p<a.length && p<b.length && a[p]===b[p]) p++;
+  return p / Math.max(a.length,b.length);
+}
+let suggestList=[];
+function onDescInput(){
+  const box=document.getElementById('suggestBox');
+  if(editId){ box.innerHTML=''; return; }   // beim Bearbeiten keine Vorschläge
+  const q=document.getElementById('mDesc').value.trim();
+  if(q.length<2){ box.innerHTML=''; return; }
+  // Kandidaten sammeln: pro Bezeichnung den neuesten Eintrag (manuell bevorzugt)
+  const seen=new Map();
+  // manuelle zuerst (haben mehr Info: Intervall, Flag, IBAN)
+  MAN.forEach(m=>{
+    const key=normStr(m.desc);
+    if(!key) return;
+    const prev=seen.get(key);
+    if(!prev || (m.date||'')>(prev.date||'')) seen.set(key, {...m, _src:'man'});
+  });
+  // importierte ergänzen (nur falls Bezeichnung noch nicht vorhanden)
+  IMP.forEach(e=>{
+    const key=normStr(e.desc);
+    if(!key || seen.has(key)) return;
+    const prev=seen.get('imp_'+key);
+    if(!prev || (e.date||'')>(prev.date||'')) seen.set('imp_'+key, {...e, _src:e.src});
+  });
+  // scoren + filtern
+  suggestList = [...seen.values()]
+    .map(c=>({c, s:similarity(q, c.desc)}))
+    .filter(x=>x.s>=0.4)
+    .sort((a,b)=> b.s-a.s || (b.c.date||'').localeCompare(a.c.date||''))
+    .slice(0,4)
+    .map(x=>x.c);
+  if(!suggestList.length){ box.innerHTML=''; return; }
+  let html='<div class="sugghint">Ähnliche Einträge – tippen zum Übernehmen:</div>';
+  suggestList.forEach((c,i)=>{
+    const tag = c._src==='man' ? {t:'MAN',bg:'var(--man-soft)',fg:'var(--man)'}
+              : c._src==='fuel'? {t:'AUTO',bg:'var(--fuel-soft)',fg:'var(--fuel)'}
+              :                  {t:'HAUS',bg:'var(--house-soft)',fg:'var(--house)'};
+    const rep = c.repeat && c.repeat!=='once' ? ' · '+intervalLabel(c.interval) : '';
+    const sub = [c.cat, (c._src==='man'?(c.fix?'zwingend':'optional'):''), rep.replace(' · ','')].filter(Boolean).join(' · ');
+    html+=`<div class="sugg" onclick="applySuggest(${i})">
+      <span class="stag" style="background:${tag.bg};color:${tag.fg}">${tag.t}</span>
+      <div class="smid"><div class="st1">${esc(c.desc)}</div><div class="st2">${esc(sub)}</div></div>
+      <span class="samt">${CHF(+c.amount||0)}</span>
+    </div>`;
+  });
+  box.innerHTML=html;
+}
+function applySuggest(i){
+  const c=suggestList[i]; if(!c) return;
+  document.getElementById('mDesc').value = c.desc||'';
+  document.getElementById('mAmount').value = (+c.amount||0)>0 ? (+c.amount).toFixed(2) : '';
+  document.getElementById('mNote').value = c.note||'';
+  if(c._src==='man'){
+    // volle Übernahme inkl. Rhythmus, Flag, IBAN
+    document.getElementById('mRepeat').value = c.repeat||'once';
+    document.getElementById('mInterval').value = String(c.interval||1);
+    document.getElementById('mIban').value = c.iban||'';
+    fillCatSelect(c.cat); setFlag(!!c.fix);
+  }else{
+    // importiert: nur Kategorie sinnvoll, Rest neutral
+    document.getElementById('mRepeat').value='once';
+    document.getElementById('mInterval').value='1';
+    const cat = (c.cat||'').split(' · ')[0] || CATS[0];
+    if(!CATS.includes(cat)) CATS.push(cat);
+    fillCatSelect(cat); setFlag(false);
+  }
+  onRepeatChange();
+  document.getElementById('suggestBox').innerHTML='';
+  document.getElementById('mDate').focus();
+  toast('Übernommen – bitte prüfen und bestätigen');
 }
 function onRepeatChange(){
   const rep=document.getElementById('mRepeat').value;
