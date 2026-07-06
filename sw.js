@@ -1,5 +1,5 @@
 /* Lebenskosten Service Worker */
-const CACHE = 'lebenskosten-v2';
+const CACHE = 'lebenskosten-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -33,6 +33,17 @@ self.addEventListener('fetch', e => {
   // GitHub-API-Aufrufe nie cachen – immer frisch holen (für aktuellen Import)
   if (url.hostname === 'api.github.com') {
     e.respondWith(fetch(e.request).catch(() => new Response('{}', {headers:{'Content-Type':'application/json'}})));
+    return;
+  }
+  // jsQR-Bibliothek vom CDN cachen (für Offline-QR-Scan nach dem ersten Laden)
+  if (url.hostname === 'cdnjs.cloudflare.com') {
+    e.respondWith(
+      caches.match(e.request).then(hit => hit || fetch(e.request).then(resp => {
+        const copy = resp.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return resp;
+      }))
+    );
     return;
   }
   // App-Dateien: Cache zuerst, Netz als Fallback

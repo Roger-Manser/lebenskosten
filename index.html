@@ -201,6 +201,13 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h2 id="sheetTitle">Neuer Eintrag</h2>
     <div class="sub" id="sheetSub">Manuelle Lebenskosten erfassen</div>
 
+    <button class="btn ghost" id="qrBtn" onclick="startQR()" style="margin-top:12px">📷 QR-Rechnung scannen</button>
+    <div id="qrArea" hidden style="margin-top:10px">
+      <video id="qrVideo" playsinline style="width:100%;border-radius:10px;background:#000;max-height:260px;object-fit:cover"></video>
+      <div class="hint" id="qrHint">Halte die Schweizer QR-Rechnung vor die Kamera…</div>
+      <button class="btn ghost" onclick="stopQR()">Scan abbrechen</button>
+    </div>
+
     <label>Bezeichnung</label>
     <input id="mDesc" placeholder="z.B. Wohnungsmiete, Krankenkasse">
 
@@ -223,10 +230,25 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <label style="margin-top:12px">Wiederholung</label>
     <select id="mRepeat" onchange="onRepeatChange()">
       <option value="once">Einmalig</option>
-      <option value="monthly">Jeden Monat – fixer Betrag</option>
-      <option value="variable">Jeden Monat – variabler Betrag (Schätzwert)</option>
+      <option value="monthly">Wiederkehrend – fixer Betrag</option>
+      <option value="variable">Wiederkehrend – variabler Betrag (Schätzwert)</option>
     </select>
-    <div class="hint" id="repeatHint" hidden>Der eingegebene Betrag gilt als <b>Schätzwert</b>. Jeden Monat erinnert dich die App beim Öffnen, den echten Betrag einzutragen. Bis dahin rechnet sie mit dem Schätzwert.</div>
+
+    <div id="intervalWrap" hidden>
+      <label>Intervall</label>
+      <select id="mInterval">
+        <option value="1">Monatlich</option>
+        <option value="2">Alle 2 Monate</option>
+        <option value="3">Vierteljährlich (alle 3 Monate)</option>
+        <option value="6">Halbjährlich (alle 6 Monate)</option>
+        <option value="12">Jährlich</option>
+      </select>
+      <div class="hint">Der Rhythmus zählt ab dem gewählten <b>Datum</b>. Beispiel: Datum im Januar + vierteljährlich = Januar, April, Juli, Oktober.</div>
+      <label>Verknüpfte IBAN <span style="font-weight:400;color:var(--ink-soft)">(für QR-Zuordnung, optional)</span></label>
+      <input id="mIban" placeholder="CH.. – wird beim QR-Scan automatisch gemerkt" autocomplete="off" autocapitalize="characters" style="font-family:var(--mono);font-size:14px">
+      <div class="hint">Scannst du künftig eine Rechnung mit dieser IBAN, ordnet die App den Betrag automatisch diesem Posten zu.</div>
+    </div>
+    <div class="hint" id="repeatHint" hidden>Der eingegebene Betrag gilt als <b>Schätzwert</b>. Zu jeder Fälligkeit erinnert dich die App beim Öffnen, den echten Betrag einzutragen. Bis dahin rechnet sie mit dem Schätzwert.</div>
 
     <label>Notiz</label>
     <input id="mNote" placeholder="optional">
@@ -252,6 +274,7 @@ let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
 let period = 'month';   // 'month' | 'year' | 'all'
 let filter = 'all';
 let editId = null, curFlag = false;
+let pendingIban = '';   // aus QR-Scan gemerkte IBAN, beim Speichern an den Posten gehängt
 
 const CHF = n => (Math.round(n*100)/100).toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -392,13 +415,18 @@ async function importAll(){
   }
 }
 
+/* springt vom Monats-Key k um n Monate weiter */
+function addMonthsK(k, n){ let [y,m]=k.split('-').map(Number); m+=n; while(m>12){m-=12;y++;} while(m<1){m+=12;y--;} return y+'-'+String(m).padStart(2,'0'); }
+function intervalLabel(n){ n=+n||1; return n===1?'monatlich':n===2?'2-monatlich':n===3?'vierteljährlich':n===6?'halbjährlich':n===12?'jährlich':('alle '+n+' Monate'); }
+
 /* ============ Kombinierte Daten ============ */
 function manExpanded(){
-  // wiederkehrende manuelle Einträge zu Einzelmonaten auffächern
+  // wiederkehrende manuelle Einträge im gewählten Intervall auffächern
   const out=[], cur=thisMonth();
   MAN.forEach(m=>{
     if((m.repeat==='monthly' || m.repeat==='variable') && m.date){
       const isVar = m.repeat==='variable';
+      const step = Math.max(1, +m.interval||1);
       const acts = m.actuals||{};
       let k=m.date.slice(0,7); let g=0;
       while(k<=cur && g++<600){
@@ -411,8 +439,8 @@ function manExpanded(){
         }
         out.push({ id:m.id+'_'+k, baseId:m.id, src:'man', desc:m.desc, amount,
           date:k+'-'+(m.date.slice(8)||'01'), cat:m.cat, fix:!!m.fix, note:m.note||'',
-          repeat:m.repeat, est, monthKey:k });
-        k=nextMonthK(k);
+          repeat:m.repeat, interval:step, est, monthKey:k });
+        k=addMonthsK(k, step);
       }
     }else{
       out.push({ id:m.id, baseId:m.id, src:'man', desc:m.desc, amount:+m.amount||0,
@@ -421,16 +449,17 @@ function manExpanded(){
   });
   return out;
 }
-/* offene variable Posten für laufenden + vergangene Monate (echter Betrag fehlt noch) */
+/* offene variable Posten bis zur aktuellen Fälligkeit (echter Betrag fehlt noch) */
 function openVariables(){
   const cur=thisMonth(); const open=[];
   MAN.forEach(m=>{
     if(m.repeat!=='variable' || !m.date) return;
+    const step = Math.max(1, +m.interval||1);
     const acts=m.actuals||{};
     let k=m.date.slice(0,7); let g=0;
     while(k<=cur && g++<600){
       if(acts[k]==null || acts[k]===''){ open.push({base:m, monthKey:k}); }
-      k=nextMonthK(k);
+      k=addMonthsK(k, step);
     }
   });
   return open;
@@ -532,7 +561,7 @@ function renderReminder(){
     const est=+o.base.amount||0;
     html+=`<div class="ritem">
       <div class="rname">${esc(o.base.desc)}
-        <small>${monthName(o.monthKey)} · Schätzwert ${CHF(est)}</small></div>
+        <small>${monthName(o.monthKey)} · ${intervalLabel(o.base.interval)} · Schätzwert ${CHF(est)}</small></div>
       <input type="number" inputmode="decimal" step="0.05" placeholder="${est.toFixed(2)}"
         id="rin_${o.base.id}_${o.monthKey}">
       <button class="rsave" onclick="saveActual('${o.base.id}','${o.monthKey}')">OK</button>
@@ -674,6 +703,8 @@ function openSheet(id){
       document.getElementById('mDate').value=m.date||today();
       document.getElementById('mNote').value=m.note||'';
       document.getElementById('mRepeat').value=m.repeat||'once';
+      document.getElementById('mInterval').value=String(m.interval||1);
+      document.getElementById('mIban').value=m.iban||'';
       fillCatSelect(m.cat); setFlag(!!m.fix);
     }
   }else{
@@ -682,6 +713,8 @@ function openSheet(id){
     document.getElementById('mDate').value=today();
     document.getElementById('mNote').value='';
     document.getElementById('mRepeat').value='once';
+    document.getElementById('mInterval').value='1';
+    document.getElementById('mIban').value = pendingIban || '';
     fillCatSelect(CATS[0]); setFlag(false);
   }
   onRepeatChange();
@@ -689,12 +722,13 @@ function openSheet(id){
 }
 function onRepeatChange(){
   const rep=document.getElementById('mRepeat').value;
+  const recurring = (rep==='monthly' || rep==='variable');
+  document.getElementById('intervalWrap').hidden = !recurring;
   document.getElementById('repeatHint').hidden = (rep!=='variable');
-  // Betrags-Label kontextabhängig beschriften
   const amountLabel = document.getElementById('amountLabel');
   if(amountLabel) amountLabel.textContent = rep==='variable' ? 'Schätzwert (CHF)' : 'Betrag (CHF)';
 }
-function closeSheet(){ document.getElementById('overlay').classList.remove('open'); editId=null; }
+function closeSheet(){ if(typeof stopQR==='function') stopQR(); document.getElementById('overlay').classList.remove('open'); editId=null; }
 function saveEntry(){
   const desc=document.getElementById('mDesc').value.trim();
   const amount=parseFloat(document.getElementById('mAmount').value);
@@ -711,9 +745,17 @@ function saveEntry(){
   }
   const wasEdit=!!editId;
   const prev = editId ? MAN.find(x=>x.id===editId) : null;
-  const obj={ id:editId||uid(), desc, amount, date, cat, fix:curFlag, note, repeat };
+  const repeat2 = repeat;
+  const interval = (repeat==='monthly'||repeat==='variable') ? (+document.getElementById('mInterval').value||1) : 1;
+  const obj={ id:editId||uid(), desc, amount, date, cat, fix:curFlag, note, repeat:repeat2, interval };
   if(repeat==='variable'){ obj.actuals = (prev && prev.actuals) ? prev.actuals : {}; }
+  // IBAN merken: manuelles Feld > frisch aus QR > bestehende
+  const fieldIban = (document.getElementById('mIban').value||'').replace(/\s+/g,'').toUpperCase();
+  const keepIban = (prev && prev.iban) ? prev.iban : '';
+  const learned = fieldIban || pendingIban || keepIban;
+  if(learned && (repeat==='monthly'||repeat==='variable')) obj.iban = learned;
   if(editId){ const i=MAN.findIndex(x=>x.id===editId); MAN[i]=obj; } else MAN.push(obj);
+  pendingIban='';
   persist(); renderAll(); closeSheet(); toast(wasEdit?'Eintrag aktualisiert':'Eintrag hinzugefügt');
 }
 function deleteEntry(){
@@ -787,6 +829,128 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 
 /* ============ Start ============ */
 restore(); loadGhConfig(); renderAll();
+
+/* ============ QR-Scan (Schweizer QR-Rechnung) ============ */
+let qrStream=null, qrRAF=null, qrLib=null;
+function loadJsQR(){
+  return new Promise((res,rej)=>{
+    if(window.jsQR){ qrLib=window.jsQR; return res(qrLib); }
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';
+    s.onload=()=>{ qrLib=window.jsQR; res(qrLib); };
+    s.onerror=()=>rej(new Error('QR-Bibliothek konnte nicht geladen werden (Internet nötig)'));
+    document.head.appendChild(s);
+  });
+}
+function qrHint(msg){ const el=document.getElementById('qrHint'); if(el) el.textContent=msg; }
+async function startQR(){
+  document.getElementById('qrArea').hidden=false;
+  document.getElementById('qrBtn').hidden=true;
+  try{
+    await loadJsQR();
+  }catch(e){ qrHint('✗ '+e.message); return; }
+  try{
+    qrStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+  }catch(e){
+    qrHint('✗ Kein Kamerazugriff. Erlaube die Kamera in den Browser-Einstellungen.'); return;
+  }
+  const video=document.getElementById('qrVideo');
+  video.srcObject=qrStream; video.setAttribute('playsinline',true);
+  await video.play();
+  const canvas=document.createElement('canvas');
+  const ctx=canvas.getContext('2d', { willReadFrequently:true });
+  qrHint('Halte die Schweizer QR-Rechnung vor die Kamera…');
+  const tick=()=>{
+    if(!qrStream){ return; }
+    if(video.readyState===video.HAVE_ENOUGH_DATA){
+      canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const code=qrLib(img.data, img.width, img.height, { inversionAttempts:'dontInvert' });
+      if(code && code.data){
+        const parsed=parseSwissQR(code.data);
+        if(parsed){ applyQR(parsed); stopQR(); return; }
+        else { qrHint('QR erkannt, aber keine Schweizer QR-Rechnung. Weiter versuchen…'); }
+      }
+    }
+    qrRAF=requestAnimationFrame(tick);
+  };
+  qrRAF=requestAnimationFrame(tick);
+}
+function stopQR(){
+  if(qrRAF) cancelAnimationFrame(qrRAF); qrRAF=null;
+  if(qrStream){ qrStream.getTracks().forEach(t=>t.stop()); qrStream=null; }
+  document.getElementById('qrArea').hidden=true;
+  document.getElementById('qrBtn').hidden=false;
+}
+/* Swiss QR: Zeilen-getrenntes Format, Header 'SPC'. Amount=Zeile 19(Index18), Empfänger-Name=Zeile 6(Index5) */
+function parseSwissQR(text){
+  const L=text.split(/\r?\n/);
+  if(!L.length || L[0].trim()!=='SPC') return null;
+  const iban = (L[3]||'').trim().replace(/\s+/g,'').toUpperCase();  // IBAN des Empfängers
+  const amount = parseFloat((L[18]||'').trim());
+  const creditor = (L[5]||'').trim();       // Name des Zahlungsempfängers
+  const refType = (L[27]||'').trim();       // QRR / SCOR / NON
+  const reference = (L[28]||'').trim();      // Referenznummer (bei QRR/SCOR)
+  let msg = (L[29]||'').trim();             // unstrukturierte Mitteilung
+  if(/^(QRR|SCOR|NON|EPD)$/.test(msg)) msg='';
+  const cur = (L[17]||'').trim();           // CHF/EUR
+  return {
+    iban: /^CH|^LI/.test(iban)?iban:'',
+    amount: isFinite(amount)?amount:null,
+    creditor: creditor||'',
+    reference: /^(QRR|SCOR)$/.test(refType)?reference:'',
+    message: msg||'',
+    currency: cur||'CHF'
+  };
+}
+function applyQR(p){
+  // 1. Bekannte IBAN? -> zu wiederkehrendem Posten zuordnen
+  if(p.iban){
+    const match = MAN.find(m => (m.repeat==='variable'||m.repeat==='monthly') && m.iban && m.iban===p.iban);
+    if(match){ confirmQRAssign(match, p); return; }
+  }
+  // 2. Unbekannt -> Formular vorbefüllen (IBAN gemerkt für spätere Verknüpfung)
+  pendingIban = p.iban || '';
+  if(p.creditor && !document.getElementById('mDesc').value) document.getElementById('mDesc').value=p.creditor;
+  if(p.amount!=null){ document.getElementById('mAmount').value=p.amount.toFixed(2); }
+  if(p.reference && !document.getElementById('mNote').value) document.getElementById('mNote').value='Ref. '+p.reference;
+  else if(p.message && !document.getElementById('mNote').value) document.getElementById('mNote').value=p.message;
+  let info='✓ Übernommen: '+(p.amount!=null?CHF(p.amount)+' CHF':'kein Betrag');
+  if(p.currency && p.currency!=='CHF') info+=' ('+p.currency+'!)';
+  if(p.iban) info+=' · neue IBAN wird beim Speichern gemerkt';
+  toast(info);
+}
+/* Bestätigung, bevor ein Betrag einem bekannten Posten zugewiesen wird */
+function confirmQRAssign(base, p){
+  const step = Math.max(1, +base.interval||1);
+  // nächsten offenen fälligen Monat für diesen Posten finden
+  const open = openVariables().filter(o=>o.base.id===base.id);
+  const cur = thisMonth();
+  let target = open.length ? open[open.length-1].monthKey : cur;  // ältester offener, sonst aktueller
+  const amt = p.amount!=null ? p.amount : 0;
+  const nice = monthName(target);
+  const isVar = base.repeat==='variable';
+  let q = 'QR erkannt: '+base.desc+'\nBetrag: '+CHF(amt)+' CHF\n\n';
+  if(isVar){
+    q += 'Als echten Betrag für '+nice+' eintragen?';
+    if(confirm(q)){
+      if(!base.actuals) base.actuals={};
+      base.actuals[target]=Math.round(amt*100)/100;
+      persist(); renderAll(); closeSheet();
+      toast('✓ '+base.desc+' · '+nice+': '+CHF(amt));
+    }
+  }else{
+    // fixer Posten: Betrag weicht evtl. ab -> als einmalige Korrektur anbieten
+    q += 'Dieser Posten hat einen festen Betrag ('+CHF(base.amount)+'). Als separaten Eintrag für '+nice+' erfassen?';
+    if(confirm(q)){
+      MAN.push({ id:uid(), desc:base.desc+' (QR)', amount:Math.round(amt*100)/100, date:target+'-01',
+        cat:base.cat, fix:!!base.fix, note:'aus QR-Scan', repeat:'once' });
+      persist(); renderAll(); closeSheet();
+      toast('✓ '+base.desc+' · '+nice+': '+CHF(amt));
+    }
+  }
+}
 
 /* ============ PWA Service Worker ============ */
 if('serviceWorker' in navigator){
