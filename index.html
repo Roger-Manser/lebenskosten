@@ -126,7 +126,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.0 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.1 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -175,6 +175,28 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <div class="srcline" style="margin-top:12px"><span><span class="dot" style="background:var(--house)"></span>Haushaltbuch (Eingänge)</span><b id="srcHb" style="font-family:var(--mono)">–</b></div>
       <div class="srcline"><span><span class="dot" style="background:var(--fuel)"></span>Fahrtenbuch (Tank &amp; Kosten)</span><b id="srcFb" style="font-family:var(--mono)">–</b></div>
       <div class="srcline"><span><span class="dot" style="background:var(--man)"></span>Manuelle Einträge</span><b id="srcMan" style="font-family:var(--mono)">–</b></div>
+    </div>
+
+    <div class="card">
+      <h3 class="sec" style="margin-top:0">Cloud-Sync (eigene Einträge)</h3>
+      <p style="font-size:13px;color:var(--ink-soft);line-height:1.5">
+        Speichert deine <b>manuellen Einträge</b> in einem privaten GitHub-Repo, damit du von überall denselben Stand hast. Beim Öffnen lädt die App automatisch den neuesten Stand.
+      </p>
+      <label>Daten-Repo (privat)</label>
+      <input id="ghDataRepo" placeholder="lebenskosten-daten" autocomplete="off" autocapitalize="none">
+      <label>Token (Fine-grained, nur dieses Repo, Contents: Read and write)</label>
+      <input id="ghDataToken" type="password" placeholder="github_pat_…" autocomplete="off">
+      <div class="hint">Bei einem privaten Repo ist der Token auf <b>jedem Gerät</b> nötig – auch zum Laden. Er bleibt nur in diesem Browser. Tipp: Token nur auf dieses eine Repo berechtigen.</div>
+      <button class="btn primary" onclick="saveSyncConfig()">Verbindung speichern</button>
+      <div class="filebtns">
+        <button class="btn accent" onclick="cloudPush()">↑ Hochladen</button>
+        <button class="btn ghost" onclick="cloudPull()">↓ Von GitHub laden</button>
+      </div>
+      <div class="hint" id="syncStatus" style="margin-top:8px"></div>
+      <label style="margin-top:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="ghDataAuto" style="width:auto;margin:0" onchange="toggleSyncAuto()">
+        <span style="font-weight:600;color:var(--ink)">Automatisch hochladen nach jeder Änderung</span>
+      </label>
     </div>
 
     <div class="card">
@@ -269,11 +291,12 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v2.0';
+const APP_VERSION = 'v2.1';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
 let GH = { owner:'', token:'', hbRepo:'haushaltbuch', fbRepo:'fahrtenbuch' };
+let SY = { repo:'lebenskosten-daten', token:'', auto:false };   // Cloud-Sync privates Daten-Repo
 /* importierte (read-only) Einträge, jeweils neu aus GitHub geholt: */
 let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
 let period = 'month';   // 'month' | 'year' | 'all'
@@ -293,6 +316,7 @@ function persist(bumpRev){
   if(bumpRev!==false){ REV = (REV||0) + 1; }
   try{ localStorage.setItem('lebenskosten1', JSON.stringify({MAN,CATS,rev:REV})); }catch(e){}
   renderVersion();
+  if(typeof cloudAutoSync==='function') cloudAutoSync();
 }
 function restore(){
   try{
@@ -300,6 +324,7 @@ function restore(){
     if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.MAN)) MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=+d.rev||0; }
   }catch(e){}
   try{ const g=localStorage.getItem('lebenskostenGh'); if(g) GH=Object.assign(GH,JSON.parse(g)); }catch(e){}
+  try{ const s=localStorage.getItem('lebenskostenSync'); if(s) SY=Object.assign(SY,JSON.parse(s)); }catch(e){}
   try{ const i=localStorage.getItem('lebenskostenImp'); if(i){const d=JSON.parse(i); if(Array.isArray(d)) IMP=d;} }catch(e){}
   try{ const p=localStorage.getItem('lebenskostenPeriod'); if(p) period=p; }catch(e){}
 }
@@ -311,6 +336,105 @@ function persistImp(){ try{ localStorage.setItem('lebenskostenImp', JSON.stringi
 
 /* ============ UTF-8 Base64 ============ */
 function b64Decode(b64){ return decodeURIComponent(escape(atob((b64||'').replace(/\n/g,'')))); }
+function b64Encode(str){ return btoa(unescape(encodeURIComponent(str))); }
+
+/* ============ Cloud-Sync (privates Daten-Repo) ============ */
+const SYNC_FILE = 'lebenskosten.json';
+function loadSyncConfig(){
+  const rEl=document.getElementById('ghDataRepo'), tEl=document.getElementById('ghDataToken'), aEl=document.getElementById('ghDataAuto');
+  if(rEl) rEl.value = SY.repo||'lebenskosten-daten';
+  if(tEl) tEl.value = SY.token||'';
+  if(aEl) aEl.checked = !!SY.auto;
+}
+function saveSyncConfig(){
+  SY.repo  = document.getElementById('ghDataRepo').value.trim() || 'lebenskosten-daten';
+  SY.token = document.getElementById('ghDataToken').value.trim();
+  try{ localStorage.setItem('lebenskostenSync', JSON.stringify(SY)); }catch(e){}
+  syncStatus(SY.token ? 'Verbindung gespeichert.' : 'Bitte Token eintragen (für privates Repo nötig).', SY.token?'ok':'warn');
+  toast('Verbindung gespeichert');
+}
+function toggleSyncAuto(){
+  SY.auto = document.getElementById('ghDataAuto').checked;
+  try{ localStorage.setItem('lebenskostenSync', JSON.stringify(SY)); }catch(e){}
+  toast(SY.auto?'Auto-Sync aktiviert':'Auto-Sync deaktiviert');
+}
+function syncReady(){ return !!(GH.owner && SY.repo && SY.token); }
+function syncStatus(msg, kind){
+  const el=document.getElementById('syncStatus'); if(!el) return;
+  el.textContent=msg||'';
+  el.style.color = kind==='ok'?'var(--accent)':kind==='err'?'#B3261E':kind==='warn'?'var(--fuel)':'var(--ink-soft)';
+}
+async function cloudGetFile(){
+  const url = `https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${SYNC_FILE}?_=${Date.now()}`;
+  const r = await fetch(url, { headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json' }, cache:'no-store' });
+  if(r.status===404) return null;
+  if(r.status===401) throw new Error('Token ungültig (401)');
+  if(r.status===403) throw new Error('Zugriff verweigert (403) – Token-Rechte prüfen');
+  if(!r.ok) throw new Error('GitHub '+r.status);
+  const j = await r.json();
+  return { sha:j.sha, data:JSON.parse(b64Decode(j.content)) };
+}
+async function cloudPush(silent){
+  if(!syncReady()){ if(!silent) syncStatus('Bitte Owner (oben), Daten-Repo und Token speichern.', 'warn'); return; }
+  if(!silent) syncStatus('Lade hoch…');
+  try{
+    let sha=null;
+    try{ const cur=await cloudGetFile(); if(cur) sha=cur.sha; }catch(e){ if(!/404/.test(e.message)) throw e; }
+    const payload = { MAN, CATS, rev:REV, updated:new Date().toISOString() };
+    const body = { message:'Lebenskosten rev '+(REV||0)+' · '+new Date().toISOString(), content:b64Encode(JSON.stringify(payload,null,2)) };
+    if(sha) body.sha=sha;
+    const url = `https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${SYNC_FILE}`;
+    const r = await fetch(url, { method:'PUT', headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' }, body:JSON.stringify(body) });
+    if(!r.ok){
+      if(r.status===401) throw new Error('Token ungültig (401)');
+      if(r.status===403) throw new Error('Keine Schreibrechte (403) – Token braucht Contents: Read and write');
+      if(r.status===404) throw new Error('Repo nicht gefunden (404) – Repo-Name/Owner prüfen');
+      if(r.status===409) throw new Error('Konflikt (409) – bitte zuerst ↓ laden');
+      throw new Error('Fehler '+r.status);
+    }
+    syncStatus('✓ Hochgeladen (Rev '+(REV||0)+') · '+new Date().toLocaleTimeString('de-CH'), 'ok');
+  }catch(e){ syncStatus('✗ '+e.message, 'err'); if(!silent) toast('Sync fehlgeschlagen'); }
+}
+async function cloudPull(){
+  if(!syncReady()){ syncStatus('Bitte Owner (oben), Daten-Repo und Token speichern.', 'warn'); return; }
+  syncStatus('Lade von GitHub…');
+  try{
+    const cur=await cloudGetFile();
+    if(!cur){ syncStatus('Noch keine Daten im Repo – lade zuerst hoch.', 'warn'); return; }
+    const d=cur.data;
+    if(!Array.isArray(d.MAN)) throw new Error('Datei hat kein gültiges Format');
+    const remoteRev=+d.rev||0, localRev=+REV||0;
+    if(localRev>remoteRev){
+      if(!confirm('Dein lokaler Stand (Rev '+localRev+') ist neuer als GitHub (Rev '+remoteRev+'). Trotzdem mit der älteren Version überschreiben?')){ syncStatus('Laden abgebrochen.'); return; }
+    }
+    MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=remoteRev;
+    persist(false); renderAll();
+    syncStatus('✓ Von GitHub geladen (Rev '+remoteRev+')', 'ok');
+    toast('Von GitHub geladen');
+  }catch(e){ syncStatus('✗ '+e.message, 'err'); }
+}
+/* Auto-Laden beim Start: übernimmt GitHub nur, wenn Stand gleich/neuer */
+async function cloudAutoLoad(){
+  if(!syncReady()) return;
+  try{
+    const cur=await cloudGetFile();
+    if(!cur || !Array.isArray(cur.data.MAN)) return;
+    const remoteRev=+cur.data.rev||0, localRev=+REV||0;
+    if(remoteRev>=localRev){
+      MAN=cur.data.MAN; if(Array.isArray(cur.data.CATS)&&cur.data.CATS.length) CATS=cur.data.CATS; REV=remoteRev;
+      persist(false); renderAll();
+      syncStatus('✓ Automatisch geladen (Rev '+remoteRev+')', 'ok');
+    }else{
+      syncStatus('Lokaler Stand neuer (Rev '+localRev+' vs. '+remoteRev+') – nicht überschrieben. Tippe ↑ Hochladen.', 'warn');
+    }
+  }catch(e){ /* offline o.ä. – lokaler Stand zählt */ }
+}
+let cloudT;
+function cloudAutoSync(){
+  if(!SY.auto || !syncReady()) return;
+  clearTimeout(cloudT);
+  cloudT=setTimeout(()=>{ cloudPush(true); }, 1500);
+}
 
 /* ============ GitHub-Import ============ */
 function loadGhConfig(){
@@ -840,7 +964,7 @@ let toastT;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
 
 /* ============ Start ============ */
-restore(); loadGhConfig(); renderAll(); renderVersion();
+restore(); loadGhConfig(); loadSyncConfig(); renderAll(); renderVersion(); cloudAutoLoad();
 
 /* ============ QR-Scan (Schweizer QR-Rechnung) ============ */
 let qrStream=null, qrRAF=null, qrLib=null;
