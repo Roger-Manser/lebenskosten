@@ -135,7 +135,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.3 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.4 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -262,6 +262,12 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     </div>
     <div class="hint">Zwingend = Fixkosten, die du nicht vermeiden kannst (Miete, Versicherung, Strom). Optional = Kosten, die du beeinflussen kannst (Freizeit, Sonstiges).</div>
 
+    <label style="margin-top:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="mWohnen" style="width:auto;margin:0">
+      <span style="font-weight:600;color:var(--ink)">Gehört zu Wohnen / Wohnung</span>
+    </label>
+    <div class="hint">Miete, Nebenkosten, Hausrat, Reparaturen, Internet/TV usw. – erscheint dann im Filter „Wohnen“.</div>
+
     <label style="margin-top:12px">Wiederholung</label>
     <select id="mRepeat" onchange="onRepeatChange()">
       <option value="once">Einmalig</option>
@@ -301,7 +307,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v2.3';
+const APP_VERSION = 'v2.4';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -587,12 +593,12 @@ function manExpanded(){
         }
         out.push({ id:m.id+'_'+k, baseId:m.id, src:'man', desc:m.desc, amount,
           date:k+'-'+(m.date.slice(8)||'01'), cat:m.cat, fix:!!m.fix, note:m.note||'',
-          repeat:m.repeat, interval:step, est, monthKey:k });
+          repeat:m.repeat, interval:step, est, monthKey:k, wohnen:!!m.wohnen });
         k=addMonthsK(k, step);
       }
     }else{
       out.push({ id:m.id, baseId:m.id, src:'man', desc:m.desc, amount:+m.amount||0,
-        date:m.date, cat:m.cat, fix:!!m.fix, note:m.note||'', repeat:'once', est:false });
+        date:m.date, cat:m.cat, fix:!!m.fix, note:m.note||'', repeat:'once', est:false, wohnen:!!m.wohnen });
     }
   });
   return out;
@@ -645,6 +651,7 @@ const FILTERS = [
   {k:'all',  l:'Alle'},
   {k:'fix',  l:'Zwingend'},
   {k:'var',  l:'Optional'},
+  {k:'wohnen',l:'Wohnen'},
   {k:'fuel', l:'Auto'},
   {k:'house',l:'Haushalt'},
   {k:'man',  l:'Manuell'}
@@ -658,6 +665,7 @@ function matchFilter(e){
   if(filter==='all') return true;
   if(filter==='fix') return e.fix;
   if(filter==='var') return !e.fix;
+  if(filter==='wohnen') return !!e.wohnen;
   return e.src===filter;
 }
 function renderList(){
@@ -853,6 +861,7 @@ function openSheet(id){
       document.getElementById('mRepeat').value=m.repeat||'once';
       document.getElementById('mInterval').value=String(m.interval||1);
       document.getElementById('mIban').value=m.iban||'';
+      document.getElementById('mWohnen').checked=!!m.wohnen;
       fillCatSelect(m.cat); setFlag(!!m.fix);
     }
   }else{
@@ -863,6 +872,7 @@ function openSheet(id){
     document.getElementById('mRepeat').value='once';
     document.getElementById('mInterval').value='1';
     document.getElementById('mIban').value = pendingIban || '';
+    document.getElementById('mWohnen').checked = false;
     fillCatSelect(CATS[0]); setFlag(false);
   }
   onRepeatChange();
@@ -977,7 +987,7 @@ function saveEntry(){
   const prev = editId ? MAN.find(x=>x.id===editId) : null;
   const repeat2 = repeat;
   const interval = (repeat==='monthly'||repeat==='variable') ? (+document.getElementById('mInterval').value||1) : 1;
-  const obj={ id:editId||uid(), desc, amount, date, cat, fix:curFlag, note, repeat:repeat2, interval };
+  const obj={ id:editId||uid(), desc, amount, date, cat, fix:curFlag, note, repeat:repeat2, interval, wohnen:document.getElementById('mWohnen').checked };
   if(repeat==='variable'){ obj.actuals = (prev && prev.actuals) ? prev.actuals : {}; }
   // IBAN merken: manuelles Feld > frisch aus QR > bestehende
   const fieldIban = (document.getElementById('mIban').value||'').replace(/\s+/g,'').toUpperCase();
