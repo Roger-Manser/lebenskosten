@@ -1,5 +1,5 @@
 /* Lebenskosten Service Worker */
-const CACHE = 'lebenskosten-v7';
+const CACHE = 'lebenskosten-v8';
 const ASSETS = [
   './',
   './index.html',
@@ -47,7 +47,18 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-  // App-Dateien: Cache zuerst, Netz als Fallback
+  // App-Navigation/HTML: Netz zuerst (frische Version), Cache nur als Offline-Fallback
+  if (e.request.mode === 'navigate' || (e.request.method === 'GET' && e.request.destination === 'document')) {
+    e.respondWith(
+      fetch(e.request).then(resp => {
+        const copy = resp.clone();
+        caches.open(CACHE).then(c => c.put('./index.html', copy));
+        return resp;
+      }).catch(() => caches.match('./index.html') || caches.match('./'))
+    );
+    return;
+  }
+  // Übrige App-Dateien: Cache zuerst, Netz als Fallback
   e.respondWith(
     caches.match(e.request).then(hit => hit || fetch(e.request).then(resp => {
       if (e.request.method === 'GET' && resp.ok && url.origin === location.origin) {

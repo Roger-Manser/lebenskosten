@@ -110,6 +110,8 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 .remind .rname small{display:block;font-weight:400;color:var(--ink-soft);font-size:11px}
 .remind input{width:90px;padding:8px;font-size:15px;border:1px solid #D9C97F;border-radius:7px;text-align:right;font-family:var(--mono)}
 .remind .rsave{flex:none;background:var(--fix);color:#fff;border:none;border-radius:7px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer}
+#updateBanner{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:30;display:flex;align-items:center;gap:14px;background:var(--ink);color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:92%;font-size:14px;font-weight:600}
+#updateBanner button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
 .toast.show{opacity:1}
 .leg{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--ink-soft)}
 .leg span{display:flex;align-items:center;gap:5px}
@@ -970,11 +972,43 @@ function confirmQRAssign(base, p){
   }
 }
 
-/* ============ PWA Service Worker ============ */
+/* ============ PWA Service Worker + Update-Erkennung ============ */
+let swReg=null, refreshing=false;
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
+    navigator.serviceWorker.register('sw.js', { updateViaCache:'none' }).then(reg=>{
+      swReg=reg;
+      // schon ein wartender SW vorhanden? -> Banner zeigen
+      if(reg.waiting && navigator.serviceWorker.controller){ showUpdateBanner(); }
+      // neue Version wird gefunden -> auf 'installed' warten
+      reg.addEventListener('updatefound', ()=>{
+        const nw=reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange', ()=>{
+          if(nw.state==='installed' && navigator.serviceWorker.controller){ showUpdateBanner(); }
+        });
+      });
+    }).catch(()=>{});
+    // regelmässig nach Updates suchen (auch wenn App lange offen bleibt)
+    setInterval(()=>{ if(swReg) swReg.update().catch(()=>{}); }, 60*1000);
   });
+  // wenn der neue SW die Kontrolle übernimmt -> einmal neu laden
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(refreshing) return; refreshing=true; window.location.reload();
+  });
+}
+function showUpdateBanner(){
+  if(document.getElementById('updateBanner')) return;
+  const b=document.createElement('div');
+  b.id='updateBanner';
+  b.innerHTML='<span>Neue Version verfügbar</span><button onclick="applyUpdate()">Aktualisieren</button>';
+  document.body.appendChild(b);
+}
+function applyUpdate(){
+  const b=document.getElementById('updateBanner');
+  if(b) b.querySelector('button').textContent='Wird aktualisiert…';
+  if(swReg && swReg.waiting){ swReg.waiting.postMessage('skipWaiting'); }
+  else { window.location.reload(); }
 }
 
 </script>
