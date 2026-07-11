@@ -140,7 +140,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.6 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.7 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -189,6 +189,18 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <div class="srcline" style="margin-top:12px"><span><span class="dot" style="background:var(--house)"></span>Haushaltbuch (Eingänge)</span><b id="srcHb" style="font-family:var(--mono)">–</b></div>
       <div class="srcline"><span><span class="dot" style="background:var(--fuel)"></span>Fahrtenbuch (Tank &amp; Kosten)</span><b id="srcFb" style="font-family:var(--mono)">–</b></div>
       <div class="srcline"><span><span class="dot" style="background:var(--man)"></span>Manuelle Einträge</span><b id="srcMan" style="font-family:var(--mono)">–</b></div>
+    </div>
+
+    <div class="card">
+      <h3 class="sec" style="margin-top:0">Quittungs-Scan (Anthropic API)</h3>
+      <p style="font-size:13px;color:var(--ink-soft);line-height:1.5">
+        Claude liest Betrag, Empfänger und Datum direkt aus einem Bild oder PDF. Kostet wenige Rappen pro Scan (Anthropic API, pay-as-you-go).
+      </p>
+      <label>Anthropic API-Key</label>
+      <input id="anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off">
+      <div class="hint">Erhältlich auf <b>console.anthropic.com</b> → API Keys. Der Key bleibt nur in diesem Browser gespeichert und wird direkt an die Anthropic-API gesendet.</div>
+      <button class="btn primary" onclick="saveAnthropicKey()">Key speichern</button>
+      <div class="hint" id="anthropicKeyStatus" style="margin-top:6px"></div>
     </div>
 
     <div class="card">
@@ -326,7 +338,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v2.6';
+const APP_VERSION = 'v2.7';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -477,6 +489,21 @@ function loadGhConfig(){
   document.getElementById('ghToken').value  = GH.token||'';
   document.getElementById('ghHbRepo').value = GH.hbRepo||'haushaltbuch';
   document.getElementById('ghFbRepo').value = GH.fbRepo||'fahrtenbuch';
+}
+function saveAnthropicKey(){
+  const key=document.getElementById('anthropicKey').value.trim();
+  if(!key){ toast('Bitte einen Key eingeben'); return; }
+  localStorage.setItem('lk_anthropic_key', key);
+  document.getElementById('anthropicKeyStatus').textContent='✓ Key gespeichert';
+  document.getElementById('anthropicKeyStatus').style.color='var(--accent)';
+  toast('API-Key gespeichert');
+}
+function loadAnthropicKey(){
+  const key=localStorage.getItem('lk_anthropic_key')||'';
+  const el=document.getElementById('anthropicKey');
+  if(el) el.value=key;
+  const st=document.getElementById('anthropicKeyStatus');
+  if(st && key){ st.textContent='Key hinterlegt'; st.style.color='var(--accent)'; }
 }
 function saveGhConfig(){
   GH.owner  = document.getElementById('ghOwner').value.trim();
@@ -1095,7 +1122,7 @@ let toastT;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
 
 /* ============ Start ============ */
-restore(); loadGhConfig(); loadSyncConfig(); renderAll(); renderVersion(); cloudAutoLoad();
+restore(); loadGhConfig(); loadSyncConfig(); loadAnthropicKey(); renderAll(); renderVersion(); cloudAutoLoad();
 
 /* ============ QR-Scan (Schweizer QR-Rechnung) ============ */
 let qrStream=null, qrRAF=null, qrLib=null;
@@ -1227,12 +1254,21 @@ function confirmQRAssign(base, p){
   }
 }
 
-/* ============ Quittungs-Scan (Tesseract OCR) ============ */
-let tessWorker=null, receiptData={};
+/* ============ Quittungs-Scan (Anthropic API) ============ */
+let receiptData={};
 
 function receiptHint(msg){ const el=document.getElementById('receiptHint'); if(el) el.textContent=msg||''; }
 
 function startReceipt(){
+  // API-Key vorhanden?
+  const key=(localStorage.getItem('lk_anthropic_key')||'').trim();
+  if(!key){
+    // Key-Eingabe direkt anzeigen
+    document.getElementById('receiptArea').hidden=false;
+    receiptHint('Bitte zuerst den Anthropic API-Key im Daten-Tab hinterlegen.');
+    document.getElementById('receiptResult').hidden=true;
+    return;
+  }
   document.getElementById('receiptInput').click();
 }
 function closeReceipt(){
@@ -1241,113 +1277,95 @@ function closeReceipt(){
   document.getElementById('receiptPreview').innerHTML='';
   receiptData={};
 }
-async function loadTesseract(){
-  if(window.Tesseract) return window.Tesseract;
+
+/* Bild zu Base64 */
+function fileToBase64(file){
   return new Promise((res,rej)=>{
-    // 1. Versuch: lokal aus Repo (firewall-sicher)
-    const local=document.createElement('script');
-    local.src='tesseract.min.js';
-    local.onload=()=>res(window.Tesseract);
-    local.onerror=()=>{
-      // 2. Fallback: CDN
-      const cdn=document.createElement('script');
-      cdn.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-      cdn.onload=()=>res(window.Tesseract);
-      cdn.onerror=()=>rej(new Error('Tesseract nicht gefunden. Bitte tesseract.min.js ins Repo legen.'));
-      document.head.appendChild(cdn);
-    };
-    document.head.appendChild(local);
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=()=>rej(new Error('Datei konnte nicht gelesen werden'));
+    r.readAsDataURL(file);
   });
 }
+
 async function processReceipt(ev){
   const file=ev.target.files[0]; if(!file) return;
   ev.target.value='';
   const area=document.getElementById('receiptArea');
   area.hidden=false;
   document.getElementById('receiptResult').hidden=true;
-  receiptHint('Lade OCR-Engine…');
 
   // Vorschau
   const prev=document.getElementById('receiptPreview');
   if(file.type.startsWith('image/')){
     const url=URL.createObjectURL(file);
     prev.innerHTML=`<img src="${url}" style="width:100%;border-radius:8px;margin-top:6px;max-height:200px;object-fit:contain">`;
-  }else{
-    prev.innerHTML=`<div style="padding:10px;background:var(--bg);border-radius:8px;margin-top:6px;font-size:13px;color:var(--ink-soft)">PDF: ${esc(file.name)}</div>`;
+  }else if(file.type==='application/pdf'){
+    prev.innerHTML=`<div style="padding:10px;background:var(--bg);border-radius:8px;margin-top:6px;font-size:13px;color:var(--ink-soft)">📄 ${esc(file.name)}</div>`;
   }
 
+  const key=(localStorage.getItem('lk_anthropic_key')||'').trim();
+  if(!key){ receiptHint('Kein API-Key hinterlegt – bitte im Tab «Daten» eintragen.'); return; }
+
+  receiptHint('Sende an Claude API…');
   try{
-    const T=await loadTesseract();
-    receiptHint('Erkenne Text (kann 10–20 Sek. dauern)…');
-
-    // Bild vorbereiten (PDF: erste Seite als Bild via canvas – rudimentär)
-    let imageSource=file;
-    if(file.type==='application/pdf'){
-      receiptHint('PDF: Nur Bildinhalte werden erkannt. Für beste Resultate JPG/PNG verwenden.');
+    let contentArr;
+    if(file.type.startsWith('image/')){
+      const b64=await fileToBase64(file);
+      const mtype=file.type.replace('image/jpg','image/jpeg');
+      contentArr=[
+        { type:'image', source:{ type:'base64', media_type:mtype, data:b64 } },
+        { type:'text', text:'Du siehst eine Quittung oder Rechnung. Extrahiere daraus:\n1. Betrag (nur die Zahl, z.B. 45.90)\n2. Empfänger / Firmenname\n3. Datum (Format YYYY-MM-DD)\n\nAntworte NUR mit einem JSON-Objekt, ohne Erklärung:\n{"amount": 45.90, "creditor": "Migros", "date": "2026-07-10"}' }
+      ];
+    }else if(file.type==='application/pdf'){
+      const b64=await fileToBase64(file);
+      contentArr=[
+        { type:'document', source:{ type:'base64', media_type:'application/pdf', data:b64 } },
+        { type:'text', text:'Du siehst eine Rechnung als PDF. Extrahiere daraus:\n1. Betrag (nur die Zahl, z.B. 45.90)\n2. Empfänger / Firmenname oder Absender\n3. Datum (Format YYYY-MM-DD)\n\nAntworte NUR mit einem JSON-Objekt, ohne Erklärung:\n{"amount": 45.90, "creditor": "Migros", "date": "2026-07-10"}' }
+      ];
+    }else{
+      receiptHint('Nur Bilder (JPG/PNG) und PDFs werden unterstützt.');
+      return;
     }
 
-    // Tesseract Worker initialisieren
-    if(!tessWorker){
-      tessWorker = await T.createWorker('deu', 1, {
-        workerPath: 'tesseract.worker.min.js',
-        langPath: './',
-        corePath: 'tesseract.min.js',
-        logger: m=>{ if(m.status==='recognizing text') receiptHint('Erkenne… '+Math.round((m.progress||0)*100)+'%'); }
-      });
-    }
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': key,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:200,
+        messages:[{ role:'user', content:contentArr }]
+      })
+    });
 
-    const { data:{ text } } = await tessWorker.recognize(imageSource);
-    receiptHint('Analyse abgeschlossen.');
-    parseReceiptText(text);
+    if(resp.status===401){ receiptHint('✗ API-Key ungültig (401) – bitte Key im Daten-Tab prüfen.'); return; }
+    if(resp.status===429){ receiptHint('✗ Rate-Limit oder ungenügendes Guthaben (429)'); return; }
+    if(!resp.ok){ receiptHint('✗ API-Fehler '+resp.status); return; }
+
+    const json=await resp.json();
+    const raw=(json.content||[]).find(b=>b.type==='text')?.text||'';
+    const clean=raw.replace(/```[a-z]*/g,'').replace(/```/g,'').trim();
+    let parsed;
+    try{ parsed=JSON.parse(clean); }catch(e){ receiptHint('✗ Claude hat kein JSON zurückgegeben: '+raw.slice(0,60)); return; }
+
+    receiptData={
+      amount: +parsed.amount||null,
+      creditor: parsed.creditor||'',
+      date: parsed.date||today()
+    };
+    receiptHint('✓ Erkannt – bitte prüfen:');
+    showReceiptResult();
 
   }catch(e){
     receiptHint('✗ '+e.message);
   }
 }
 
-/* OCR-Text analysieren: Betrag und Empfänger extrahieren */
-function parseReceiptText(text){
-  const lines=text.split(/\n/).map(l=>l.trim()).filter(Boolean);
-
-  // Betrag: grösste CHF-Zahl auf der Quittung (meist der Totalbetrag)
-  // Suche nach Mustern wie: Total 12.50 / CHF 12.50 / TOTAL 12.50 / Betrag: 12.50
-  const allAmounts=[];
-  const amtRe=/(?:total|betrag|summe|zahlung|chf|sfr|fr\.?)[\s:]*(\d{1,6}[.,]\d{2})|(\d{1,6}[.,]\d{2})[\s]*(?:chf|sfr|fr\.?)/gi;
-  let m;
-  while((m=amtRe.exec(text))!==null){
-    const raw=(m[1]||m[2]).replace(',','.');
-    const val=parseFloat(raw);
-    if(val>0 && val<100000) allAmounts.push(val);
-  }
-  // Fallback: alle Zahlen mit 2 Dezimalstellen
-  if(!allAmounts.length){
-    const fallRe=/\b(\d{1,6}[.,]\d{2})\b/g;
-    while((m=fallRe.exec(text))!==null){
-      const val=parseFloat(m[1].replace(',','.'));
-      if(val>0 && val<100000) allAmounts.push(val);
-    }
-  }
-  // Grössten Betrag nehmen (= Total)
-  const amount = allAmounts.length ? Math.max(...allAmounts) : null;
-
-  // Empfänger: erste nicht-leere Zeile (oft Firmenname oben)
-  const creditor = lines[0]||'';
-
-  // Datum: typische Formate dd.mm.yyyy / dd.mm.yy / yyyy-mm-dd
-  let date='';
-  const dateRe=/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/;
-  const dm=text.match(dateRe);
-  if(dm){
-    let [,d,mo,y]=dm;
-    if(y.length===2) y='20'+y;
-    if(+y>2000 && +y<=2100 && +mo>=1 && +mo<=12 && +d>=1 && +d<=31){
-      date=`${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
-    }
-  }
-
-  receiptData={ amount, creditor, date, rawText:text };
-  showReceiptResult();
-}
 function showReceiptResult(){
   const r=receiptData;
   const el=document.getElementById('receiptFields');
@@ -1366,7 +1384,7 @@ function showReceiptResult(){
         <input id="rDate" type="date" value="${esc(r.date||today())}" style="font-size:15px;width:100%;padding:8px;border:1px solid var(--line);border-radius:7px">
       </div>
     </div>
-    <div style="font-size:11px;color:var(--ink-soft)">Bitte Werte prüfen und korrigieren, bevor du übernehmst.</div>`;
+    <div style="font-size:11px;color:var(--ink-soft)">Bitte Werte prüfen – Claude macht gelegentlich Fehler bei unleserlichen Quittungen.</div>`;
   document.getElementById('receiptResult').hidden=false;
 }
 function applyReceipt(){
@@ -1377,7 +1395,7 @@ function applyReceipt(){
   if(amount>0) document.getElementById('mAmount').value=amount.toFixed(2);
   document.getElementById('mDate').value=date;
   closeReceipt();
-  onDescInput(); // Vorschläge triggern
+  onDescInput();
   toast('Übernommen – bitte Kategorie und Typ prüfen');
 }
 
