@@ -140,7 +140,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.5 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.6 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -240,7 +240,21 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h2 id="sheetTitle">Neuer Eintrag</h2>
     <div class="sub" id="sheetSub">Manuelle Lebenskosten erfassen</div>
 
-    <button class="btn ghost" id="qrBtn" onclick="startQR()" style="margin-top:12px">📷 QR-Rechnung scannen</button>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn ghost" id="qrBtn" onclick="startQR()" style="flex:1;margin-top:0">📷 QR scannen</button>
+      <button class="btn ghost" onclick="startReceipt()" style="flex:1;margin-top:0">📄 Quittung</button>
+    </div>
+    <input type="file" id="receiptInput" accept="image/*,application/pdf" hidden onchange="processReceipt(event)">
+    <div id="receiptArea" hidden style="margin-top:10px">
+      <div class="hint" id="receiptHint">Erkenne Text…</div>
+      <div id="receiptPreview"></div>
+      <div id="receiptResult" hidden style="margin-top:8px;background:var(--accent-soft);border:1px solid #C5E0D4;border-radius:8px;padding:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px">ERKANNT – bitte prüfen:</div>
+        <div id="receiptFields"></div>
+        <button class="btn accent" onclick="applyReceipt()" style="margin-top:10px">Übernehmen</button>
+        <button class="btn ghost" onclick="closeReceipt()" style="margin-top:6px">Verwerfen</button>
+      </div>
+    </div>
     <div id="qrArea" hidden style="margin-top:10px">
       <video id="qrVideo" playsinline style="width:100%;border-radius:10px;background:#000;max-height:260px;object-fit:cover"></video>
       <div class="hint" id="qrHint">Halte die Schweizer QR-Rechnung vor die Kamera…</div>
@@ -312,7 +326,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v2.5';
+const APP_VERSION = 'v2.6';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1211,6 +1225,160 @@ function confirmQRAssign(base, p){
       toast('✓ '+base.desc+' · '+nice+': '+CHF(amt));
     }
   }
+}
+
+/* ============ Quittungs-Scan (Tesseract OCR) ============ */
+let tessWorker=null, receiptData={};
+
+function receiptHint(msg){ const el=document.getElementById('receiptHint'); if(el) el.textContent=msg||''; }
+
+function startReceipt(){
+  document.getElementById('receiptInput').click();
+}
+function closeReceipt(){
+  document.getElementById('receiptArea').hidden=true;
+  document.getElementById('receiptResult').hidden=true;
+  document.getElementById('receiptPreview').innerHTML='';
+  receiptData={};
+}
+async function loadTesseract(){
+  if(window.Tesseract) return window.Tesseract;
+  return new Promise((res,rej)=>{
+    // 1. Versuch: lokal aus Repo (firewall-sicher)
+    const local=document.createElement('script');
+    local.src='tesseract.min.js';
+    local.onload=()=>res(window.Tesseract);
+    local.onerror=()=>{
+      // 2. Fallback: CDN
+      const cdn=document.createElement('script');
+      cdn.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      cdn.onload=()=>res(window.Tesseract);
+      cdn.onerror=()=>rej(new Error('Tesseract nicht gefunden. Bitte tesseract.min.js ins Repo legen.'));
+      document.head.appendChild(cdn);
+    };
+    document.head.appendChild(local);
+  });
+}
+async function processReceipt(ev){
+  const file=ev.target.files[0]; if(!file) return;
+  ev.target.value='';
+  const area=document.getElementById('receiptArea');
+  area.hidden=false;
+  document.getElementById('receiptResult').hidden=true;
+  receiptHint('Lade OCR-Engine…');
+
+  // Vorschau
+  const prev=document.getElementById('receiptPreview');
+  if(file.type.startsWith('image/')){
+    const url=URL.createObjectURL(file);
+    prev.innerHTML=`<img src="${url}" style="width:100%;border-radius:8px;margin-top:6px;max-height:200px;object-fit:contain">`;
+  }else{
+    prev.innerHTML=`<div style="padding:10px;background:var(--bg);border-radius:8px;margin-top:6px;font-size:13px;color:var(--ink-soft)">PDF: ${esc(file.name)}</div>`;
+  }
+
+  try{
+    const T=await loadTesseract();
+    receiptHint('Erkenne Text (kann 10–20 Sek. dauern)…');
+
+    // Bild vorbereiten (PDF: erste Seite als Bild via canvas – rudimentär)
+    let imageSource=file;
+    if(file.type==='application/pdf'){
+      receiptHint('PDF: Nur Bildinhalte werden erkannt. Für beste Resultate JPG/PNG verwenden.');
+    }
+
+    // Tesseract Worker initialisieren
+    if(!tessWorker){
+      tessWorker = await T.createWorker('deu', 1, {
+        workerPath: 'tesseract.worker.min.js',
+        langPath: './',
+        corePath: 'tesseract.min.js',
+        logger: m=>{ if(m.status==='recognizing text') receiptHint('Erkenne… '+Math.round((m.progress||0)*100)+'%'); }
+      });
+    }
+
+    const { data:{ text } } = await tessWorker.recognize(imageSource);
+    receiptHint('Analyse abgeschlossen.');
+    parseReceiptText(text);
+
+  }catch(e){
+    receiptHint('✗ '+e.message);
+  }
+}
+
+/* OCR-Text analysieren: Betrag und Empfänger extrahieren */
+function parseReceiptText(text){
+  const lines=text.split(/\n/).map(l=>l.trim()).filter(Boolean);
+
+  // Betrag: grösste CHF-Zahl auf der Quittung (meist der Totalbetrag)
+  // Suche nach Mustern wie: Total 12.50 / CHF 12.50 / TOTAL 12.50 / Betrag: 12.50
+  const allAmounts=[];
+  const amtRe=/(?:total|betrag|summe|zahlung|chf|sfr|fr\.?)[\s:]*(\d{1,6}[.,]\d{2})|(\d{1,6}[.,]\d{2})[\s]*(?:chf|sfr|fr\.?)/gi;
+  let m;
+  while((m=amtRe.exec(text))!==null){
+    const raw=(m[1]||m[2]).replace(',','.');
+    const val=parseFloat(raw);
+    if(val>0 && val<100000) allAmounts.push(val);
+  }
+  // Fallback: alle Zahlen mit 2 Dezimalstellen
+  if(!allAmounts.length){
+    const fallRe=/\b(\d{1,6}[.,]\d{2})\b/g;
+    while((m=fallRe.exec(text))!==null){
+      const val=parseFloat(m[1].replace(',','.'));
+      if(val>0 && val<100000) allAmounts.push(val);
+    }
+  }
+  // Grössten Betrag nehmen (= Total)
+  const amount = allAmounts.length ? Math.max(...allAmounts) : null;
+
+  // Empfänger: erste nicht-leere Zeile (oft Firmenname oben)
+  const creditor = lines[0]||'';
+
+  // Datum: typische Formate dd.mm.yyyy / dd.mm.yy / yyyy-mm-dd
+  let date='';
+  const dateRe=/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/;
+  const dm=text.match(dateRe);
+  if(dm){
+    let [,d,mo,y]=dm;
+    if(y.length===2) y='20'+y;
+    if(+y>2000 && +y<=2100 && +mo>=1 && +mo<=12 && +d>=1 && +d<=31){
+      date=`${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    }
+  }
+
+  receiptData={ amount, creditor, date, rawText:text };
+  showReceiptResult();
+}
+function showReceiptResult(){
+  const r=receiptData;
+  const el=document.getElementById('receiptFields');
+  el.innerHTML=`
+    <div style="margin-bottom:8px">
+      <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px">Empfänger / Bezeichnung</div>
+      <input id="rDesc" value="${esc(r.creditor||'')}" style="font-size:15px;width:100%;padding:8px;border:1px solid var(--line);border-radius:7px">
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:8px">
+      <div style="flex:1">
+        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px">Betrag (CHF)</div>
+        <input id="rAmount" type="number" step="0.05" value="${r.amount!=null?r.amount.toFixed(2):''}" style="font-size:15px;width:100%;padding:8px;border:1px solid var(--line);border-radius:7px;font-family:var(--mono)">
+      </div>
+      <div style="flex:1">
+        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px">Datum</div>
+        <input id="rDate" type="date" value="${esc(r.date||today())}" style="font-size:15px;width:100%;padding:8px;border:1px solid var(--line);border-radius:7px">
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--ink-soft)">Bitte Werte prüfen und korrigieren, bevor du übernehmst.</div>`;
+  document.getElementById('receiptResult').hidden=false;
+}
+function applyReceipt(){
+  const desc=(document.getElementById('rDesc').value||'').trim();
+  const amount=parseFloat(document.getElementById('rAmount').value);
+  const date=document.getElementById('rDate').value||today();
+  if(desc) document.getElementById('mDesc').value=desc;
+  if(amount>0) document.getElementById('mAmount').value=amount.toFixed(2);
+  document.getElementById('mDate').value=date;
+  closeReceipt();
+  onDescInput(); // Vorschläge triggern
+  toast('Übernommen – bitte Kategorie und Typ prüfen');
 }
 
 /* ============ PWA Service Worker + Update-Erkennung ============ */

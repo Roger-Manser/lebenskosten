@@ -1,5 +1,5 @@
 /* Lebenskosten Service Worker */
-const CACHE = 'lebenskosten-v13';
+const CACHE = 'lebenskosten-v14';
 const ASSETS = [
   './',
   './index.html',
@@ -7,7 +7,9 @@ const ASSETS = [
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',
-  './jsQR.js'
+  './jsQR.js',
+  './tesseract.min.js',
+  './tesseract.worker.min.js'
 ];
 
 self.addEventListener('install', e => {
