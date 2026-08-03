@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#15201A">
+<meta name="theme-color" content="#1A3A8C">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -63,6 +63,12 @@ main{flex:1;padding:14px 14px 90px;overflow-y:auto}
 .locked{font-size:9px;color:var(--ink-soft);font-family:var(--mono)}
 .month-head{display:flex;justify-content:space-between;align-items:baseline;margin:16px 2px 8px}
 .filtersum{display:flex;justify-content:space-between;align-items:center;background:var(--ink);color:#fff;border-radius:10px;padding:11px 14px;margin-bottom:10px}
+.searchbar{position:relative;margin-bottom:10px}
+.searchbar input{width:100%;padding:11px 40px 11px 14px;border:1.5px solid var(--line);border-radius:10px;font-size:15px;background:#fff;color:var(--ink)}
+.searchbar input:focus{outline:none;border-color:var(--accent)}
+.searchbar input::placeholder{color:var(--ink-soft)}
+#searchClear{position:absolute;right:10px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--ink-soft);font-size:16px;cursor:pointer;padding:4px 6px}
+.searchhl{background:#FFF3B0;border-radius:2px;font-weight:700}
 .filtersum .fl{font-size:12px;font-weight:600;letter-spacing:.03em}
 .filtersum .fl small{display:block;font-weight:400;color:#9FB5A8;font-size:11px;margin-top:1px}
 .filtersum .fv{font-family:var(--mono);font-size:18px;font-weight:700;text-align:right}
@@ -140,7 +146,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.7 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.9 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -160,6 +166,10 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <main>
   <section id="tab-list">
+    <div class="searchbar">
+      <input id="searchInput" type="search" placeholder="Suche: Bezeichnung, Kategorie, Betrag, Datum…" oninput="onSearch()" autocomplete="off" autocorrect="off" autocapitalize="off">
+      <button id="searchClear" hidden onclick="clearSearch()">✕</button>
+    </div>
     <div id="reminderBox"></div>
     <div class="filterbar" id="filterbar"></div>
     <div id="listBody"></div>
@@ -338,7 +348,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v2.7';
+const APP_VERSION = 'v2.9';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -348,6 +358,7 @@ let SY = { repo:'lebenskosten-daten', token:'', auto:false };   // Cloud-Sync pr
 let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
 let period = 'month';   // 'month' | 'year' | 'all'
 let filter = 'all';
+let searchQ = '';      // aktiver Suchbegriff
 let editId = null, curFlag = false;
 let pendingIban = '';   // aus QR-Scan gemerkte IBAN, beim Speichern an den Posten gehängt
 
@@ -706,8 +717,46 @@ function renderFilters(){
   document.getElementById('filterbar').innerHTML = FILTERS.map(f=>
     `<button class="chip ${filter===f.k?'on':''}" onclick="setFilter('${f.k}')">${f.l}</button>`).join('');
 }
+function onSearch(){
+  searchQ = (document.getElementById('searchInput').value||'').trim().toLowerCase();
+  document.getElementById('searchClear').hidden = !searchQ;
+  renderFilters(); renderList();
+}
+function clearSearch(){
+  document.getElementById('searchInput').value='';
+  searchQ='';
+  document.getElementById('searchClear').hidden=true;
+  renderFilters(); renderList();
+}
+function matchSearch(e){
+  if(!searchQ) return true;
+  const terms = searchQ.split(/\s+/).filter(Boolean);
+  // durchsuchbare Felder: Bezeichnung, Kategorie, Notiz, Betrag, Datum
+  const haystack = [
+    e.desc||'',
+    e.cat||'',
+    e.note||'',
+    CHF(e.amount||0),
+    String(e.amount||''),
+    fmtDate(e.date||''),
+    e.date||''
+  ].join(' ').toLowerCase();
+  return terms.every(t=>haystack.includes(t));
+}
+/* Suchbegriff im Text hervorheben */
+function highlight(text){
+  if(!searchQ || !text) return esc(text||'');
+  const terms=searchQ.split(/\s+/).filter(Boolean);
+  let result=esc(text);
+  terms.forEach(t=>{
+    const re=new RegExp('('+t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')', 'gi');
+    result=result.replace(re,'<mark class="searchhl">$1</mark>');
+  });
+  return result;
+}
 function setFilter(k){ filter=k; renderFilters(); renderList(); }
 function matchFilter(e){
+  if(!matchSearch(e)) return false;
   if(filter==='all') return true;
   if(filter==='fix') return e.fix;
   if(filter==='var') return !e.fix;
@@ -718,14 +767,18 @@ function renderList(){
   const body=document.getElementById('listBody');
   let es = periodEntries().filter(matchFilter).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   if(!es.length){
-    body.innerHTML = `<div class="empty">Keine Einträge im gewählten Zeitraum.<br>Importiere aus GitHub oder füge mit + einen manuellen Eintrag hinzu.</div>`;
+    const msg = searchQ
+      ? `Keine Einträge für „${searchQ}" gefunden.`
+      : 'Keine Einträge im gewählten Zeitraum.<br>Importiere aus GitHub oder füge mit + einen manuellen Eintrag hinzu.';
+    body.innerHTML = `<div class="empty">${msg}</div>`;
     return;
   }
   const total = es.reduce((s,e)=>s+e.amount,0);
   const filterName = (FILTERS.find(f=>f.k===filter)||{l:'Alle'}).l;
   const periodName = PERIOD_LABEL[period].replace(' ▾','');
+  const searchLabel = searchQ ? ` · „${searchQ}"` : '';
   let html = `<div class="filtersum">
-    <div class="fl">${esc(filterName)}<small>${esc(periodName)}</small></div>
+    <div class="fl">${esc(filterName)}${esc(searchLabel)}<small>${esc(periodName)}</small></div>
     <div class="fv">${CHF(total)}<small>${es.length} ${es.length===1?'Eintrag':'Einträge'} · CHF</small></div>
   </div>`;
   // nach Monat gruppieren
@@ -746,10 +799,10 @@ function renderList(){
       html += `<div class="entry" ${clickAttr} style="${editable?'':'cursor:default'}">
         <span class="tag ${tagClass}">${tagLabel}</span>
         <div class="mid">
-          <div class="t1">${e.fix?'<span class="fixdot" title="Zwingend"></span>':''}${esc(e.desc)}</div>
-          <div class="t2">${esc(sub)}${estMark}</div>
+          <div class="t1">${e.fix?'<span class="fixdot" title="Zwingend"></span>':''}${highlight(e.desc)}</div>
+          <div class="t2">${highlight(sub)}${estMark}</div>
         </div>
-        <div class="amt">${CHF(e.amount)}${editable?'':'<div class="locked">↻ Import</div>'}</div>
+        <div class="amt">${highlight(CHF(e.amount))}${editable?'':'<div class="locked">↻ Import</div>'}</div>
       </div>`;
     });
   });

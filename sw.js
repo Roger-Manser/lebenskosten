@@ -1,5 +1,5 @@
 /* Lebenskosten Service Worker */
-const CACHE = 'lebenskosten-v14';
+const CACHE = 'lebenskosten-v17';
 const ASSETS = [
   './',
   './index.html',
