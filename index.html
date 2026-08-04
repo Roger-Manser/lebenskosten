@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.11</title>
+<title>Lebenskosten v4.12</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.11</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.12</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -261,6 +261,9 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <label style="margin-top:12px;">GitHub Repo</label>
       <input type="text" id="setting_github_repo" placeholder="z.B. lebenskosten-daten">
       
+      <label style="margin-top:12px;">Dateiname (optional)</label>
+      <input type="text" id="setting_sync_filename" placeholder="z.B. lebenskosten-daten.json oder lebenskosten-daten">
+      
       <label style="margin-top:12px;">GitHub Token</label>
       <input type="password" id="setting_github_token" placeholder="ghp_..." autocomplete="new-password">
       <button class="btn ghost" onclick="if(appSettings)appSettings.testGitHub()" style="margin-top:4px;font-size:13px">🧪 Token testen</button>
@@ -376,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.11';
+const APP_VERSION = 'v4.12';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -425,7 +428,30 @@ function b64Decode(b64){ return decodeURIComponent(escape(atob((b64||'').replace
 function b64Encode(str){ return btoa(unescape(encodeURIComponent(str))); }
 
 /* ============ Cloud-Sync (privates Daten-Repo) ============ */
-const SYNC_FILE = 'lebenskosten.json';
+let SYNC_FILE = 'lebenskosten.json';  // Default
+
+function setupSyncFile() {
+  // Versuche aus AppSettings zu laden
+  const fileName = appSettings?.getSetting('sync_filename') || '';
+  if(fileName) {
+    // Wenn User .json vergessen hat, hinzufügen
+    SYNC_FILE = fileName.endsWith('.json') ? fileName : fileName + '.json';
+    console.log('SYNC_FILE aus AppSettings:', SYNC_FILE);
+  } else {
+    // Fallback auf Default oder alte localStorage
+    const oldSync = localStorage.getItem('lebenskostenSync');
+    if(oldSync) {
+      try {
+        const syncData = JSON.parse(oldSync);
+        if(syncData.file) {
+          SYNC_FILE = syncData.file.endsWith('.json') ? syncData.file : syncData.file + '.json';
+          console.log('SYNC_FILE aus alten localStorage:', SYNC_FILE);
+        }
+      } catch(e) {}
+    }
+  }
+  console.log('Final SYNC_FILE:', SYNC_FILE);
+}
 function loadSyncConfig(){
   const rEl=document.getElementById('ghDataRepo'), tEl=document.getElementById('ghDataToken'), aEl=document.getElementById('ghDataAuto');
   if(rEl) rEl.value = SY.repo||'lebenskosten-daten';
@@ -1585,10 +1611,16 @@ function setupAppSettings() {
   appSettings = new AppSettings('Lebenskosten');
   appSettings.loadAllIntoUI();
   
+  // Setup SYNC_FILE (Dateiname) BEVOR GitHub-Einstellungen gesetzt werden
+  if(typeof setupSyncFile === 'function') {
+    setupSyncFile();
+  }
+  
   console.log('=== DEBUG setupAppSettings ===');
   console.log('AppSettings owner:', appSettings.getSetting('github_owner'));
   console.log('AppSettings token:', appSettings.getSetting('github_token'));
   console.log('AppSettings repo:', appSettings.getSetting('github_repo'));
+  console.log('AppSettings sync_filename:', appSettings.getSetting('sync_filename'));
   console.log('Alte localStorage keys:');
   console.log('  lebenskostenGh:', localStorage.getItem('lebenskostenGh'));
   console.log('  lebenskostenSync:', localStorage.getItem('lebenskostenSync'));
@@ -1623,6 +1655,7 @@ function setupAppSettings() {
     console.log('Final GH.owner:', owner);
     console.log('Final GH.token:', token ? 'vorhanden' : 'LEER!');
     console.log('Final SY.repo:', repo);
+    console.log('Final SYNC_FILE:', SYNC_FILE);
     
     GH.owner = owner;
     GH.token = token;
