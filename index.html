@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v3.8</title>
+<title>Lebenskosten v4.0</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.8</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.0</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.9 · Rev 0</div>
@@ -376,7 +376,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8';
+const APP_VERSION = 'v4.0';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -817,20 +817,32 @@ function renderList(){
     const grp=byMonth[k];
     const sum=grp.reduce((s,e)=>s+e.amount,0);
     html += `<div class="month-head"><span class="m">${monthName(k)}</span><span class="s">${CHF(sum)}</span></div>`;
-    grp.forEach(e=>{
-      const tagClass = e.src==='fuel'?'fuel':e.src==='house'?'house':'man';
-      const tagLabel = e.src==='fuel'?'AUTO':e.src==='house'?'HAUS':'MAN';
-      const editable = e.src==='man';
-      const sub = [fmtDate(e.date), e.cat, e.note].filter(Boolean).join(' · ');
-      const estMark = e.est ? '<span style="color:var(--fix);font-family:var(--mono);font-size:11px"> ≈ Schätzwert</span>' : '';
-      const clickAttr = editable ? `onclick="openSheet('${e.baseId}')"` : '';
-      html += `<div class="entry" ${clickAttr} style="${editable?'':'cursor:default'}">
+    // Gruppiere nach Kategorie
+    const byCat = {};
+    grp.forEach(e => {
+      const cat = e.cat || 'Sonstiges';
+      if(!byCat[cat]) {
+        byCat[cat] = {
+          items: [],
+          total: 0,
+          src: null
+        };
+      }
+      byCat[cat].items.push(e);
+      byCat[cat].total += e.amount;
+      byCat[cat].src = e.src;
+    });
+    
+    // Render gruppiert - nur Gesamtbetrag pro Kategorie
+    Object.entries(byCat).forEach(([cat, data]) => {
+      const tagClass = data.src==='fuel'?'fuel':data.src==='house'?'house':'man';
+      const tagLabel = data.src==='fuel'?'AUTO':data.src==='house'?'HAUS':'MAN';
+      html += `<div class="entry" style="cursor:default;">
         <span class="tag ${tagClass}">${tagLabel}</span>
         <div class="mid">
-          <div class="t1">${e.fix?'<span class="fixdot" title="Zwingend"></span>':''}${highlight(e.desc)}</div>
-          <div class="t2">${highlight(sub)}${estMark}</div>
+          <div class="t1">📦 ${highlight(esc(cat))}</div>
         </div>
-        <div class="amt">${highlight(CHF(e.amount))}${editable?'':'<div class="locked">↻ Import</div>'}</div>
+        <div class="amt">${highlight(CHF(data.total))}<div class="locked">↻ Import</div></div>
       </div>`;
     });
   });
