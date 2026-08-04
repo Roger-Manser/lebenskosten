@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.17</title>
+<title>Lebenskosten v4.18</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.17</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.18</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.17';
+const APP_VERSION = 'v4.18';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -693,15 +693,15 @@ async function importAll(){
   try{
     // Haushaltbuch
     try{
-      console.log("importAll: Fetching Haushaltsbuch"); console.log('importAll: fetching HB'); const hb = await fetchRepoFile(GH.hbRepo, 'haushaltbuch.json'); console.log('importAll HB:', hb ? 'ok' : 'null');
+      console.log("importAll: fetching HB"); const hb = await fetchRepoFile(GH.hbRepo, 'haushaltbuch.json'); console.log('importAll HB:', hb ? 'ok' : 'null');
       console.log("importAll HB result:", hb ? "data" : "null"); if(hb.missing){ document.getElementById('srcHb').textContent='Datei fehlt'; }
-      else { console.log("importAll: Haushaltsbuch mapHaushalt count"); const m=mapHaushalt(hb.data); console.log('importAll HB mapped:', m.length); console.log("importAll HB mapped:", m.length); fresh=fresh.concat(m); hbCount=m.length; document.getElementById('srcHb').textContent=hbCount+' Eingänge'; }
-    }catch(e){ console.error("importAll HB error:", e.message); document.getElementById').textContent='Fehler'; throw e; }
+      else { console.log("importAll: Haushaltsbuch mapHaushalt count"); const m=mapHaushalt(hb.data); console.log("importAll HB mapped:", m.length); fresh=fresh.concat(m); hbCount=m.length; document.getElementById('srcHb').textContent=hbCount+' Eingänge'; }
+    }catch(e){ console.error("importAll HB error:", e.message); document.getElementById('srcHb').textContent='Fehler: '+e.message; throw e; }
     // Fahrtenbuch
     try{
-      console.log("importAll: Fetching Fahrtenbuch"); console.log('importAll: fetching FB'); const fb = await fetchRepoFile(GH.fbRepo, 'fahrtenbuch.json'); console.log('importAll FB:', fb ? 'ok' : 'null');
+      console.log("importAll: fetching FB"); const fb = await fetchRepoFile(GH.fbRepo, 'fahrtenbuch.json'); console.log('importAll FB:', fb ? 'ok' : 'null');
       console.log("importAll FB result:", fb ? "data" : "null"); if(fb.missing){ document.getElementById('srcFb').textContent='Datei fehlt'; }
-      else { console.log("importAll: Fahrtenbuch mapFahrten count"); const m=mapFahrten(fb.data); console.log('importAll FB mapped:', m.length); console.log("importAll FB mapped:", m.length); fresh=fresh.concat(m); fbCount=m.length; document.getElementById('srcFb').textContent=fbCount+' Einträge'; }
+      else { console.log("importAll: Fahrtenbuch mapFahrten count"); const m=mapFahrten(fb.data); console.log("importAll FB mapped:", m.length); fresh=fresh.concat(m); fbCount=m.length; document.getElementById('srcFb').textContent=fbCount+' Einträge'; }
     }catch(e){ document.getElementById('srcFb').textContent='Fehler'; throw e; }
 
     console.log("importAll: Total fresh:", fresh.length); console.log('importAll TOTAL fresh:', fresh.length); IMP = fresh;
