@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.19</title>
+<title>Lebenskosten v4.20</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.19</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.20</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.19';
+const APP_VERSION = 'v4.20';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -628,6 +628,12 @@ async function fetchRepoFile(repo, file){
 function mapHaushalt(S){
   const out=[];
   const log = (S && Array.isArray(S.log)) ? S.log : [];
+  const artikelByID = {};
+  // Baue Index der Artikel für schnellen Zugriff auf kaufort
+  if(S && Array.isArray(S.a)){
+    S.a.forEach(a => { artikelByID[a.id] = a; });
+  }
+  
   log.forEach(e=>{
     // Eingang erkennen: 'ein' (deutsch) oder 'in' (alt); Ausgänge ('aus'/'out') ignorieren
     const isEingang = (e.t==='ein' || e.t==='in');
@@ -639,7 +645,17 @@ function mapHaushalt(S){
     
     // Baue desc mit kaufort auf: "Migros - Tomaten"
     const itemName = e.name || 'Einkauf';
-    const desc = e.kaufort ? e.kaufort + ' - ' + itemName : itemName;
+    
+    // Versuche kaufort zu finden:
+    // 1. Zuerst aus Log-Eintrag
+    // 2. Dann aus Artikel-Level (parent article)
+    // 3. Fallback: leer
+    let kaufort = e.kaufort || '';
+    if(!kaufort && e.aid && artikelByID[e.aid]){
+      kaufort = artikelByID[e.aid].kaufort || '';
+    }
+    
+    const desc = kaufort ? kaufort + ' - ' + itemName : itemName;
     
     out.push({
       id:'hb_'+(e.zeit||uid()),
