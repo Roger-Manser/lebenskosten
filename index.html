@@ -146,7 +146,6 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.6</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.6 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -387,6 +386,55 @@ let SY = { repo:'lebenskosten-daten', token:'', auto:false };   // Cloud-Sync pr
 let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
 
 
+
+function displayImportGrouped() {
+  /**
+   * ZEIGE importierte Daten GRUPPIERT, aber ändere sie NICHT!
+   * Gibt gruppierte Struktur für Rendering zurück
+   */
+  if(!IMP || IMP.length === 0) return [];
+  
+  // Filtere nur Import-Einträge
+  const imports = IMP.filter(e => e.src && (e.src.includes('fuel') || e.src.includes('house')));
+  if(imports.length === 0) return [];
+  
+  const grouped = {};
+  
+  imports.forEach(entry => {
+    if(!entry.desc) return;
+    
+    // Extrahiere Geschäft
+    let store = entry.desc.split(' - ')[0].split('·')[0].trim() || 'Unbekannt';
+    let dateStr = (entry.date || '').substring(0, 10) || new Date().toISOString().split('T')[0];
+    const key = dateStr + '_' + store;
+    
+    if(!grouped[key]) {
+      grouped[key] = {
+        date: dateStr,
+        store: store,
+        positions: [],
+        total: 0
+      };
+    }
+    
+    grouped[key].positions.push({...entry});
+    grouped[key].total += (entry.amount || 0);
+  });
+  
+  // Konvertiere zu Array (sortiert)
+  return Object.entries(grouped)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([key, group]) => ({
+      id: 'GROUP_' + key,
+      date: group.date,
+      desc: `📦 ${group.store}`,
+      amount: group.total,
+      positions: group.positions,
+      isGroup: true
+    }));
+}
+
+
 function groupImpByStoreAndDate() {
   /**
    * Gruppiere importierte Einträge nach Geschäft + Datum
@@ -432,40 +480,7 @@ function groupImpByStoreAndDate() {
 }
 
 
-function renderGroupedImport() {
-  /**
-   * Renderiert importierte Einkäufe GRUPPIERT nach Geschäft + Datum
-   * Ersetzt einzelne IMP-Einträge mit gruppierten Einträgen
-   */
-  if(!IMP || IMP.length === 0) return;
-  
-  const grouped = groupImpByStoreAndDate();
-  const newIMP = [];
-  
-  // Gehe durch Gruppen (sortiert)
-  Object.entries(grouped)
-    .sort((a, b) => b[0].localeCompare(a[0])) // Neueste zuerst
-    .forEach(([key, group]) => {
-      // Erstelle einen "Meta-Eintrag" für die Gruppe
-      const groupEntry = {
-        id: 'GROUP_' + key,
-        src: 'grouped',
-        date: group.date,
-        desc: `📦 ${group.store}`,  // Geschäft als Beschreibung
-        amount: group.total,
-        cat: 'import',
-        fix: false,
-        note: group.positions.length + ' Positionen',
-        positions: group.positions  // Speichere einzelne Positionen
-      };
-      newIMP.push(groupEntry);
-    });
-  
-  // Ersetze IMP mit gruppierten Einträgen
-  IMP = newIMP;
-  console.log('✅ IMP gruppiert: ' + newIMP.length + ' Gruppen');
-  persistImp();
-}
+
 
 
 let period = 'month';   // 'month' | 'year' | 'all'
@@ -499,8 +514,7 @@ function restore(){
   try{ const p=localStorage.getItem('lebenskostenPeriod'); if(p) period=p; }catch(e){}
 }
 function renderVersion(){
-  const el=document.getElementById('verLabel');
-  if(el) el.textContent = APP_VERSION+' · Rev '+(REV||0);
+  // verLabel wurde entfernt - nur noch h1 zeigt Version
 }
 function persistImp(){ try{ localStorage.setItem('lebenskostenImp', JSON.stringify(IMP)); }catch(e){} }
 
@@ -728,7 +742,6 @@ async function importAll(){
     }catch(e){ document.getElementById('srcFb').textContent='Fehler'; throw e; }
 
     IMP = fresh;
-    if(typeof renderGroupedImport === 'function') { renderGroupedImport(); }
     persistImp();
     renderAll();
     ghStatus('✓ Import: '+hbCount+' aus Haushaltbuch, '+fbCount+' aus Fahrtenbuch ('+new Date().toLocaleTimeString('de-CH')+')','ok');
