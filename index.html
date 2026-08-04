@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.26</title>
+<title>Lebenskosten v4.27</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.26</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.27</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.26';
+const APP_VERSION = 'v4.27';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -631,6 +631,20 @@ function mapHaushalt(S){
   
   console.log('mapHaushalt: Starte mit', log.length, 'Log-Einträgen');
   
+  // DEBUG: Zeige ALLE Felder des ersten Eingangs
+  if(log.length > 0){
+    const first = log.find(e => e.t==='ein' || e.t==='in');
+    if(first){
+      console.log('=== ERSTES LOG-OBJEKT (Eingang) - ALLE FELDER ===');
+      console.log('Feldnamen:', Object.keys(first));
+      Object.keys(first).forEach(k => {
+        console.log(`  ${k}: ${JSON.stringify(first[k])}`);
+      });
+      // Alternative Ausgabe
+      console.log('JSON:', JSON.stringify(first));
+    }
+  }
+  
   let debugCount = 0;
   log.forEach((e, idx)=>{
     // Eingang erkennen: 'ein' (deutsch) oder 'in' (alt); Ausgänge ('aus'/'out') ignorieren
@@ -644,8 +658,8 @@ function mapHaushalt(S){
     // Baue desc mit geschaeft auf: "Migros - Tomaten"
     const itemName = e.name || 'Einkauf';
     
-    // Debug erste 5 Einträge
-    if(debugCount < 5){
+    // Debug erste 3 Einträge
+    if(debugCount < 3){
       console.log(`mapHaushalt[${debugCount}]: name="${itemName}", geschaeft="${e.geschaeft || '(LEER!)'}"`);
       debugCount++;
     }
