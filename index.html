@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v3.4</title>
+<title>Lebenskosten v3.5</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -377,7 +377,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v2.9';
+const APP_VERSION = 'v3.5';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -385,6 +385,52 @@ let GH = { owner:'', token:'', hbRepo:'haushaltbuch', fbRepo:'fahrtenbuch' };
 let SY = { repo:'lebenskosten-daten', token:'', auto:false };   // Cloud-Sync privates Daten-Repo
 /* importierte (read-only) Einträge, jeweils neu aus GitHub geholt: */
 let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
+
+
+function groupImpByStoreAndDate() {
+  /**
+   * Gruppiere importierte Einträge nach Geschäft + Datum
+   * Input: IMP Array mit einzelnen Positionen
+   * Output: Grouped Object {key: {store: '...', date: '...', positions: [], total: 0}}
+   */
+  const grouped = {};
+  
+  IMP.forEach(entry => {
+    if(!entry.desc) return; // Skip invalid entries
+    
+    // Extrahiere Geschäft aus description (z.B. "Lidl - Brot" → "Lidl")
+    let store = entry.desc.split(' - ')[0].split('·')[0].trim() || 'Unbekannt';
+    
+    // Formatiere Datum (z.B. "2026-08-04")
+    let dateStr = (entry.date || '').substring(0, 10) || new Date().toISOString().split('T')[0];
+    
+    // Key für Gruppierung: "2026-08-04_Lidl"
+    const key = dateStr + '_' + store;
+    
+    if(!grouped[key]) {
+      grouped[key] = {
+        date: dateStr,
+        store: store,
+        positions: [],
+        total: 0
+      };
+    }
+    
+    grouped[key].positions.push({
+      desc: entry.desc,
+      amount: entry.amount,
+      cat: entry.cat,
+      fix: entry.fix,
+      note: entry.note,
+      src: entry.src
+    });
+    
+    grouped[key].total += (entry.amount || 0);
+  });
+  
+  return grouped;
+}
+
 let period = 'month';   // 'month' | 'year' | 'all'
 let filter = 'all';
 let searchQ = '';      // aktiver Suchbegriff
