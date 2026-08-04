@@ -1,6 +1,6 @@
 /**
  * APP-SPEZIFISCHE SETTINGS – ALLE 4 APPS
- * Version: 1.2 (App v3.0) – MIT DATEI-DIALOG
+ * Version: 1.2 (App v3.3) – MIT DATEI-DIALOG
  */
 
 const APP_SETTINGS = {
@@ -23,7 +23,7 @@ const APP_SETTINGS = {
     ]
   },
   'Fahrtenbuch': {
-    version: '3.1',
+    version: '3.3',
     fields: [
       { id: 'github_token', label: 'GitHub Token', type: 'password' },
       { id: 'github_owner', label: 'GitHub Owner', type: 'text', placeholder: 'roger-manser' },
@@ -46,7 +46,7 @@ class AppSettings {
     this.appName = appName;
     this.config = APP_SETTINGS[appName] || {};
     this.storageKey = appName + '_settings';
-    console.log('✅ AppSettings v1.2 (App v3.0) initialized for: ' + appName);
+    console.log('✅ AppSettings v1.2 (App v3.3) initialized for: ' + appName);
     this.setupFileHandler();
   }
 
@@ -256,4 +256,4 @@ class AppSettings {
   }
 }
 
-console.log('✅ AppSettings v1.2 (App v3.0) (2026-08-04) loaded');
+console.log('✅ AppSettings v1.2 (App v3.3) (2026-08-04) loaded');

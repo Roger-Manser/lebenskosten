@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v3.0</title>
+<title>Lebenskosten v3.3</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -419,7 +419,13 @@ function restore(){
     const raw = localStorage.getItem('lebenskosten1');
     if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.MAN)) MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=+d.rev||0; }
   }catch(e){}
-  try{ const g=localStorage.getItem('lebenskostenGh'); if(g) GH=Object.assign(GH,JSON.parse(g)); }catch(e){}
+  try{ 
+    if(appSettings) {
+      GH.owner = appSettings.getSetting('github_owner') || '';
+      GH.repo = appSettings.getSetting('github_repo') || '';
+      GH.token = appSettings.getSetting('github_token') || '';
+    }
+  }catch(e){}
   try{ const s=localStorage.getItem('lebenskostenSync'); if(s) SY=Object.assign(SY,JSON.parse(s)); }catch(e){}
   try{ const i=localStorage.getItem('lebenskostenImp'); if(i){const d=JSON.parse(i); if(Array.isArray(d)) IMP=d;} }catch(e){}
   try{ const p=localStorage.getItem('lebenskostenPeriod'); if(p) period=p; }catch(e){}
@@ -542,13 +548,13 @@ function loadGhConfig(){
 function saveAnthropicKey(){
   const key=document.getElementById('anthropicKey').value.trim();
   if(!key){ toast('Bitte einen Key eingeben'); return; }
-  localStorage.setItem('lk_anthropic_key', key);
+  if(appSettings) appSettings.setSetting('anthropic_api_key', key);
   document.getElementById('anthropicKeyStatus').textContent='✓ Key gespeichert';
   document.getElementById('anthropicKeyStatus').style.color='var(--accent)';
   toast('API-Key gespeichert');
 }
 function loadAnthropicKey(){
-  const key=localStorage.getItem('lk_anthropic_key')||'';
+  const key=(appSettings ? appSettings.getSetting('anthropic_api_key') : '')||'';
   const el=document.getElementById('anthropicKey');
   if(el) el.value=key;
   const st=document.getElementById('anthropicKeyStatus');
@@ -559,7 +565,13 @@ function saveGhConfig(){
   GH.token  = document.getElementById('ghToken').value.trim();
   GH.hbRepo = document.getElementById('ghHbRepo').value.trim() || 'haushaltbuch';
   GH.fbRepo = document.getElementById('ghFbRepo').value.trim() || 'fahrtenbuch';
-  try{ localStorage.setItem('lebenskostenGh', JSON.stringify(GH)); }catch(e){}
+  try{ 
+    if(appSettings) {
+      appSettings.setSetting('github_owner', GH.owner || '');
+      appSettings.setSetting('github_repo', GH.repo || '');
+      appSettings.setSetting('github_token', GH.token || '');
+    }
+  }catch(e){}
   toast('Verbindung gespeichert');
 }
 function ghStatus(msg, kind){
@@ -1352,7 +1364,7 @@ function receiptHint(msg){ const el=document.getElementById('receiptHint'); if(e
 
 function startReceipt(){
   // API-Key vorhanden?
-  const key=(localStorage.getItem('lk_anthropic_key')||'').trim();
+  const key=(appSettings ? appSettings.getSetting('anthropic_api_key') : '').trim();
   if(!key){
     // Key-Eingabe direkt anzeigen
     document.getElementById('receiptArea').hidden=false;
@@ -1395,7 +1407,7 @@ async function processReceipt(ev){
     prev.innerHTML=`<div style="padding:10px;background:var(--bg);border-radius:8px;margin-top:6px;font-size:13px;color:var(--ink-soft)">📄 ${esc(file.name)}</div>`;
   }
 
-  const key=(localStorage.getItem('lk_anthropic_key')||'').trim();
+  const key=(appSettings ? appSettings.getSetting('anthropic_api_key') : '').trim();
   if(!key){ receiptHint('Kein API-Key hinterlegt – bitte im Tab «Daten» eintragen.'); return; }
 
   receiptHint('Sende an Claude API…');
@@ -1537,9 +1549,44 @@ document.addEventListener('DOMContentLoaded', function() {
   try {
     appSettings = new AppSettings('Lebenskosten');
     appSettings.loadAllIntoUI();
+    
+    // Auto-Sync starten
+    if(typeof autoSyncInit === 'function') {
+      console.log('🔄 Starte Auto-Sync...');
+      autoSyncInit();
+    }
   } catch(e) {
     console.error('AppSettings error:', e);
   }
+});
+</script>
+<script>
+// AUTO-SYNC FUNKTIONALITÄT
+let autoSyncInterval = null;
+const AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 Minuten
+
+function autoSyncInit() {
+  // Sofort einmal beim Start synchen
+  if(typeof cloudPull === 'function') {
+    console.log('🔄 Initialer Auto-Sync beim Start...');
+    cloudPull().catch(e => console.error('Auto-Sync error:', e));
+  }
+  
+  // Regelmässig synchen (alle 30 Minuten)
+  if(autoSyncInterval) clearInterval(autoSyncInterval);
+  autoSyncInterval = setInterval(() => {
+    if(typeof cloudPull === 'function') {
+      console.log('🔄 Auto-Sync Interval: ' + new Date().toLocaleTimeString());
+      cloudPull().catch(e => console.error('Auto-Sync interval error:', e));
+    }
+  }, AUTO_SYNC_INTERVAL_MS);
+  
+  console.log('✅ Auto-Sync aktiv (alle 30 Min)');
+}
+
+// Cleanup bei Unload
+window.addEventListener('beforeunload', () => {
+  if(autoSyncInterval) clearInterval(autoSyncInterval);
 });
 </script>
 </body>
