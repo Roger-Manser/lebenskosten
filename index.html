@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v3.6</title>
+<title>Lebenskosten v3.8</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,9 +143,10 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.6</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.8</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.9 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -251,23 +252,22 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <h3 class="sec" style="margin-top:0">Zurücksetzen</h3>
       <button class="btn danger" onclick="resetManual()">Alle manuellen Einträge löschen</button>
     </div>
-  
-    <div class="card">
+      <div class="card">
       <h3 class="sec" style="margin-top:0">⚙️ App-Einstellungen</h3>
       
       <label>GitHub Owner</label>
-      <input type="text" id="setting_github_owner" placeholder="z.B. roger-manser" onchange="if(appSettings)appSettings.setSetting('github_owner',this.value)">
+      <input type="text" id="setting_github_owner" placeholder="z.B. roger-manser">
       
       <label style="margin-top:12px;">GitHub Repo</label>
-      <input type="text" id="setting_github_repo" placeholder="z.B. lebenskosten-daten" onchange="if(appSettings)appSettings.setSetting('github_repo',this.value)">
+      <input type="text" id="setting_github_repo" placeholder="z.B. lebenskosten-daten">
       
       <label style="margin-top:12px;">GitHub Token</label>
-      <input type="password" id="setting_github_token" placeholder="ghp_..." onchange="if(appSettings)appSettings.setSetting('github_token',this.value)" autocomplete="new-password">
+      <input type="password" id="setting_github_token" placeholder="ghp_..." autocomplete="new-password">
       <button class="btn ghost" onclick="if(appSettings)appSettings.testGitHub()" style="margin-top:4px;font-size:13px">🧪 Token testen</button>
       <div id="test_github_token" style="font-size:12px;padding:4px;margin-top:4px;"></div>
       
       <label style="margin-top:12px;">Anthropic API Key</label>
-      <input type="password" id="setting_anthropic_api_key" placeholder="sk-ant-..." onchange="if(appSettings)appSettings.setSetting('anthropic_api_key',this.value)" autocomplete="new-password">
+      <input type="password" id="setting_anthropic_api_key" placeholder="sk-ant-..." autocomplete="new-password">
       <button class="btn ghost" onclick="if(appSettings)appSettings.testAnthropicKey()" style="margin-top:4px;font-size:13px">🧪 API Key testen</button>
       <div id="test_anthropic_api_key" style="font-size:12px;padding:4px;margin-top:4px;"></div>
       
@@ -384,105 +384,6 @@ let GH = { owner:'', token:'', hbRepo:'haushaltbuch', fbRepo:'fahrtenbuch' };
 let SY = { repo:'lebenskosten-daten', token:'', auto:false };   // Cloud-Sync privates Daten-Repo
 /* importierte (read-only) Einträge, jeweils neu aus GitHub geholt: */
 let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
-
-
-
-function displayImportGrouped() {
-  /**
-   * ZEIGE importierte Daten GRUPPIERT, aber ändere sie NICHT!
-   * Gibt gruppierte Struktur für Rendering zurück
-   */
-  if(!IMP || IMP.length === 0) return [];
-  
-  // Filtere nur Import-Einträge
-  const imports = IMP.filter(e => e.src && (e.src.includes('fuel') || e.src.includes('house')));
-  if(imports.length === 0) return [];
-  
-  const grouped = {};
-  
-  imports.forEach(entry => {
-    if(!entry.desc) return;
-    
-    // Extrahiere Geschäft
-    let store = entry.desc.split(' - ')[0].split('·')[0].trim() || 'Unbekannt';
-    let dateStr = (entry.date || '').substring(0, 10) || new Date().toISOString().split('T')[0];
-    const key = dateStr + '_' + store;
-    
-    if(!grouped[key]) {
-      grouped[key] = {
-        date: dateStr,
-        store: store,
-        positions: [],
-        total: 0
-      };
-    }
-    
-    grouped[key].positions.push({...entry});
-    grouped[key].total += (entry.amount || 0);
-  });
-  
-  // Konvertiere zu Array (sortiert)
-  return Object.entries(grouped)
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([key, group]) => ({
-      id: 'GROUP_' + key,
-      date: group.date,
-      desc: `📦 ${group.store}`,
-      amount: group.total,
-      positions: group.positions,
-      isGroup: true
-    }));
-}
-
-
-function groupImpByStoreAndDate() {
-  /**
-   * Gruppiere importierte Einträge nach Geschäft + Datum
-   * Input: IMP Array mit einzelnen Positionen
-   * Output: Grouped Object {key: {store: '...', date: '...', positions: [], total: 0}}
-   */
-  const grouped = {};
-  
-  IMP.forEach(entry => {
-    if(!entry.desc) return; // Skip invalid entries
-    
-    // Extrahiere Geschäft aus description (z.B. "Lidl - Brot" → "Lidl")
-    let store = entry.desc.split(' - ')[0].split('·')[0].trim() || 'Unbekannt';
-    
-    // Formatiere Datum (z.B. "2026-08-04")
-    let dateStr = (entry.date || '').substring(0, 10) || new Date().toISOString().split('T')[0];
-    
-    // Key für Gruppierung: "2026-08-04_Lidl"
-    const key = dateStr + '_' + store;
-    
-    if(!grouped[key]) {
-      grouped[key] = {
-        date: dateStr,
-        store: store,
-        positions: [],
-        total: 0
-      };
-    }
-    
-    grouped[key].positions.push({
-      desc: entry.desc,
-      amount: entry.amount,
-      cat: entry.cat,
-      fix: entry.fix,
-      note: entry.note,
-      src: entry.src
-    });
-    
-    grouped[key].total += (entry.amount || 0);
-  });
-  
-  return grouped;
-}
-
-
-
-
-
 let period = 'month';   // 'month' | 'year' | 'all'
 let filter = 'all';
 let searchQ = '';      // aktiver Suchbegriff
@@ -514,7 +415,8 @@ function restore(){
   try{ const p=localStorage.getItem('lebenskostenPeriod'); if(p) period=p; }catch(e){}
 }
 function renderVersion(){
-  // verLabel wurde entfernt - nur noch h1 zeigt Version
+  const el=document.getElementById('verLabel');
+  if(el) el.textContent = APP_VERSION+' · Rev '+(REV||0);
 }
 function persistImp(){ try{ localStorage.setItem('lebenskostenImp', JSON.stringify(IMP)); }catch(e){} }
 
@@ -889,24 +791,6 @@ function matchFilter(e){
   if(filter==='wohnen') return !!e.wohnen;
   return e.src===filter;
 }
-
-function renderEntry(e, html) {
-  const tagClass = e.src==='fuel'?'fuel':e.src==='house'?'house':'man';
-  const tagLabel = e.src==='fuel'?'AUTO':e.src==='house'?'HAUS':'MAN';
-  const editable = e.src==='man';
-  const sub = [fmtDate(e.date), e.cat, e.note].filter(Boolean).join(' · ');
-  const estMark = e.est ? '<span style="color:var(--fix);font-family:var(--mono);font-size:11px"> ≈ Schätzwert</span>' : '';
-  const clickAttr = editable ? `onclick="openSheet('${e.baseId}')"` : '';
-  return `<div class="entry" ${clickAttr} style="${editable?'':'cursor:default'}">
-    <span class="tag ${tagClass}">${tagLabel}</span>
-    <div class="mid">
-      <div class="t1">${e.fix?'<span class="fixdot" title="Zwingend"></span>':''}${highlight(e.desc)}</div>
-      <div class="t2">${highlight(sub)}${estMark}</div>
-    </div>
-    <div class="amt">${highlight(CHF(e.amount))}${editable?'':'<div class="locked">↻ Import</div>'}</div>
-  </div>`;
-}
-
 function renderList(){
   const body=document.getElementById('listBody');
   let es = periodEntries().filter(matchFilter).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -949,7 +833,6 @@ function renderList(){
         <div class="amt">${highlight(CHF(e.amount))}${editable?'':'<div class="locked">↻ Import</div>'}</div>
       </div>`;
     });
-      }
   });
   body.innerHTML = html;
 }
@@ -1641,30 +1524,43 @@ function applyUpdate(){
 <script>
 var appSettings = null;
 
-// Initialisiere AppSettings sofort
 function setupAppSettings() {
   appSettings = new AppSettings('Lebenskosten');
   appSettings.loadAllIntoUI();
-  
-  // Lade Werte in App
   if(window.GH) {
     GH.owner = appSettings.getSetting('github_owner') || '';
     GH.token = appSettings.getSetting('github_token') || '';
-    console.log('✅ AppSettings → GH loaded');
   }
 }
 
-// Beim Laden aufrufen
 document.addEventListener('DOMContentLoaded', function() {
   try {
     setupAppSettings();
     if(typeof autoSyncInit === 'function') {
-      console.log('🔄 Starte Auto-Sync...');
       autoSyncInit();
     }
   } catch(e) {
     console.error('Init error:', e);
   }
+});
+
+let autoSyncInterval = null;
+const AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000;
+
+function autoSyncInit() {
+  if(typeof cloudPull === 'function') {
+    cloudPull().catch(e => console.error('Auto-Sync error:', e));
+  }
+  if(autoSyncInterval) clearInterval(autoSyncInterval);
+  autoSyncInterval = setInterval(() => {
+    if(typeof cloudPull === 'function') {
+      cloudPull().catch(e => console.error('Auto-Sync interval error:', e));
+    }
+  }, AUTO_SYNC_INTERVAL_MS);
+}
+
+window.addEventListener('beforeunload', () => {
+  if(autoSyncInterval) clearInterval(autoSyncInterval);
 });
 </script>
 </body>
