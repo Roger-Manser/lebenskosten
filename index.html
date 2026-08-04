@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.24</title>
+<title>Lebenskosten v4.25</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.24</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.25</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.24';
+const APP_VERSION = 'v4.25';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -629,39 +629,12 @@ function mapHaushalt(S){
   const out=[];
   const log = (S && Array.isArray(S.log)) ? S.log : [];
   const artikelByID = {};
-  // Baue Index der Artikel für schnellen Zugriff auf kaufort
+  // Baue Index der Artikel für schnellen Zugriff
   if(S && Array.isArray(S.a)){
     S.a.forEach(a => { artikelByID[a.id] = a; });
   }
-  console.log('mapHaushalt: Log-Einträge:', log.length, 'Artikel:', S && S.a ? S.a.length : 0);
   
-  // Debug: Prüfe erste Log-Einträge und Artikel-Struktur
-  if(log.length > 0){
-    console.log('=== ERSTE LOG-EINTRAG - ALLE FELDER ===');
-    const firstLog = log[0];
-    console.log('Alle Felder:', Object.keys(firstLog));
-    console.log('Komplettes Objekt:', JSON.stringify(firstLog));
-    
-    // Suche nach einem Feld das "shop", "store", "kaufort", "where", "wo_", "purchased" enthalten könnte
-    const potentialShopFields = Object.keys(firstLog).filter(k => 
-      k.toLowerCase().includes('shop') || 
-      k.toLowerCase().includes('store') || 
-      k.toLowerCase().includes('kaufort') || 
-      k.toLowerCase().includes('where') || 
-      k.toLowerCase().includes('wo_') || 
-      k.toLowerCase().includes('purchased') ||
-      k.toLowerCase().includes('ge') // "gekauft"
-    );
-    console.log('Potenzielle Shop/Store Felder:', potentialShopFields);
-    if(potentialShopFields.length > 0){
-      potentialShopFields.forEach(field => {
-        console.log(`  ${field}: ${firstLog[field]}`);
-      });
-    }
-  }
-  
-  let debugCount = 0;
-  log.forEach((e, idx)=>{
+  log.forEach(e=>{
     // Eingang erkennen: 'ein' (deutsch) oder 'in' (alt); Ausgänge ('aus'/'out') ignorieren
     const isEingang = (e.t==='ein' || e.t==='in');
     if(!isEingang) return;
@@ -670,26 +643,13 @@ function mapHaushalt(S){
     const amount = Math.round(menge*preis*100)/100;
     if(!(amount>0)) return;                  // Einträge ohne Preis (z.B. Bestandskorrektur) nicht als Kosten
     
-    // Baue desc mit kaufort auf: "Migros - Tomaten"
+    // Baue desc mit geschaeft auf: "Migros - Tomaten"
     const itemName = e.name || 'Einkauf';
     
-    // Versuche kaufort zu finden - WICHTIG: Aus preisHistorie des Artikels!
-    let kaufort = e.kaufort || '';
-    const artikelObj = artikelByID[e.aid];
+    // Lese geschaeft aus Log-Eintrag
+    let geschaeft = e.geschaeft || '';
     
-    if(!kaufort && artikelObj){
-      // Versuche aus preisHistorie zu lesen (letzter Eintrag)
-      if(artikelObj.preisHistorie && artikelObj.preisHistorie.length > 0){
-        const letzter = artikelObj.preisHistorie[artikelObj.preisHistorie.length - 1];
-        kaufort = letzter.kaufort || '';
-      }
-      // Fallback: kaufort auf Artikel-Ebene
-      if(!kaufort){
-        kaufort = artikelObj.kaufort || '';
-      }
-    }
-    
-    const desc = kaufort ? kaufort + ' - ' + itemName : itemName;
+    const desc = geschaeft ? geschaeft + ' - ' + itemName : itemName;
     
     out.push({
       id:'hb_'+(e.zeit||uid()),
@@ -702,7 +662,6 @@ function mapHaushalt(S){
       note:(menge!==1?menge+(e.einheit?' '+e.einheit:'')+' à '+CHF(preis):'')
     });
   });
-  console.log('mapHaushalt: Total mapped:', out.length);
   return out;
 }
 /* Fahrtenbuch: jeder Tankstopp + jede Einzelkosten + monatliche Buchungen, einzeln */
