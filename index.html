@@ -253,15 +253,22 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <button class="btn danger" onclick="resetManual()">Alle manuellen Einträge löschen</button>
     </div>
   
+    
+
+  
     <div class="card">
       <h3 class="sec" style="margin-top:0">⚙️ App-Einstellungen</h3>
-      <label>GitHub Token</label>
+      
+      <label>GitHub Owner</label>
+      <input type="text" id="setting_github_owner" placeholder="z.B. roger-manser" onchange="if(appSettings)appSettings.setSetting('github_owner',this.value)">
+      
+      <label style="margin-top:12px;">GitHub Repo</label>
+      <input type="text" id="setting_github_repo" placeholder="z.B. lebenskosten-daten" onchange="if(appSettings)appSettings.setSetting('github_repo',this.value)">
+      
+      <label style="margin-top:12px;">GitHub Token</label>
       <input type="password" id="setting_github_token" placeholder="ghp_..." onchange="if(appSettings)appSettings.setSetting('github_token',this.value)" autocomplete="new-password">
       <button class="btn ghost" onclick="if(appSettings)appSettings.testGitHub()" style="margin-top:4px;font-size:13px">🧪 Token testen</button>
       <div id="test_github_token" style="font-size:12px;padding:4px;margin-top:4px;"></div>
-      
-      <label style="margin-top:12px;">GitHub Owner</label>
-      <input type="text" id="setting_github_owner" placeholder="roger-manser" onchange="if(appSettings)appSettings.setSetting('github_owner',this.value)">
       
       <label style="margin-top:12px;">Anthropic API Key</label>
       <input type="password" id="setting_anthropic_api_key" placeholder="sk-ant-..." onchange="if(appSettings)appSettings.setSetting('anthropic_api_key',this.value)" autocomplete="new-password">

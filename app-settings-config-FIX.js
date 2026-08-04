@@ -1,6 +1,6 @@
 /**
  * APP-SPEZIFISCHE SETTINGS – ALLE 4 APPS
- * Version: 1.0 – FEHLER-FREI
+ * Version: 1.1 – VERBESSERT
  */
 
 const APP_SETTINGS = {
@@ -33,10 +33,10 @@ const APP_SETTINGS = {
   'Lebenskosten': {
     version: '2.9',
     fields: [
-      { id: 'github_token', label: 'GitHub Token', type: 'password' },
-      { id: 'github_owner', label: 'GitHub Owner', type: 'text', placeholder: 'roger-manser' },
-      { id: 'github_repo', label: 'GitHub Repo', type: 'text', placeholder: 'lebenskosten-daten' },
-      { id: 'anthropic_api_key', label: 'Anthropic API Key', type: 'password' }
+      { id: 'github_owner', label: 'GitHub Owner', type: 'text', placeholder: 'roger-manser', order: 1 },
+      { id: 'github_repo', label: 'GitHub Repo', type: 'text', placeholder: 'lebenskosten-daten', order: 2 },
+      { id: 'github_token', label: 'GitHub Token', type: 'password', order: 3 },
+      { id: 'anthropic_api_key', label: 'Anthropic API Key', type: 'password', order: 4 }
     ]
   }
 };
@@ -114,10 +114,19 @@ class AppSettings {
       const repo = this.getSetting('github_repo');
       const resultDiv = document.getElementById('test_github_token');
 
-      if (!resultDiv) return;
+      if (!resultDiv) {
+        console.error('Result div not found');
+        return;
+      }
 
-      if (!token || !owner || !repo) {
-        resultDiv.innerHTML = '❌ Token, Owner oder Repo fehlt';
+      if (!owner || !repo) {
+        resultDiv.innerHTML = '❌ GitHub Owner oder Repo fehlt';
+        resultDiv.className = 'test-result error';
+        return;
+      }
+
+      if (!token) {
+        resultDiv.innerHTML = '❌ GitHub Token fehlt';
         resultDiv.className = 'test-result error';
         return;
       }
@@ -137,7 +146,7 @@ class AppSettings {
         resultDiv.innerHTML = '❌ Token ungültig (401)';
         resultDiv.className = 'test-result error';
       } else if (response.status === 404) {
-        resultDiv.innerHTML = '❌ Repo nicht gefunden (404)';
+        resultDiv.innerHTML = '❌ Repo nicht gefunden (404) - Owner oder Repo falsch?';
         resultDiv.className = 'test-result error';
       } else {
         resultDiv.innerHTML = '❌ Fehler: ' + response.status;
@@ -149,6 +158,7 @@ class AppSettings {
         resultDiv.innerHTML = '❌ ' + err.message;
         resultDiv.className = 'test-result error';
       }
+      console.error('Test error:', err);
     }
   }
 
@@ -157,7 +167,10 @@ class AppSettings {
       const apiKey = this.getSetting('anthropic_api_key');
       const resultDiv = document.getElementById('test_anthropic_api_key');
 
-      if (!resultDiv) return;
+      if (!resultDiv) {
+        console.error('Result div not found');
+        return;
+      }
 
       if (!apiKey) {
         resultDiv.innerHTML = '❌ API Key fehlt';
@@ -188,6 +201,7 @@ class AppSettings {
         resultDiv.innerHTML = '❌ ' + err.message;
         resultDiv.className = 'test-result error';
       }
+      console.error('Test error:', err);
     }
   }
 
@@ -210,6 +224,7 @@ class AppSettings {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+      alert('✅ Settings exportiert: ' + filename);
     } catch (e) {
       console.error('Error exporting:', e);
       alert('❌ Export fehlgeschlagen');
@@ -253,4 +268,4 @@ class AppSettings {
   }
 }
 
-console.log('✅ AppSettings loaded');
+console.log('✅ AppSettings v1.1 loaded');
