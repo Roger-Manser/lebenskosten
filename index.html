@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.0</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.3</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.9 · Rev 0</div>
@@ -419,13 +419,7 @@ function restore(){
     const raw = localStorage.getItem('lebenskosten1');
     if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.MAN)) MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=+d.rev||0; }
   }catch(e){}
-  try{ 
-    if(appSettings) {
-      GH.owner = appSettings.getSetting('github_owner') || '';
-      GH.repo = appSettings.getSetting('github_repo') || '';
-      GH.token = appSettings.getSetting('github_token') || '';
-    }
-  }catch(e){}
+  // GH settings werden jetzt von AppSettings geladen (siehe initAppSettings)
   try{ const s=localStorage.getItem('lebenskostenSync'); if(s) SY=Object.assign(SY,JSON.parse(s)); }catch(e){}
   try{ const i=localStorage.getItem('lebenskostenImp'); if(i){const d=JSON.parse(i); if(Array.isArray(d)) IMP=d;} }catch(e){}
   try{ const p=localStorage.getItem('lebenskostenPeriod'); if(p) period=p; }catch(e){}
@@ -570,8 +564,9 @@ function saveGhConfig(){
       appSettings.setSetting('github_owner', GH.owner || '');
       appSettings.setSetting('github_repo', GH.repo || '');
       appSettings.setSetting('github_token', GH.token || '');
+      console.log('✅ GH → AppSettings gespeichert');
     }
-  }catch(e){}
+  }catch(e){console.error('Save error:', e);}
   toast('Verbindung gespeichert');
 }
 function ghStatus(msg, kind){
@@ -1544,11 +1539,34 @@ function applyUpdate(){
 </script>
 <script src="app-settings-config-FIX.js"></script>
 <script>
+// GLOBALE AppSettings Variable
 var appSettings = null;
-document.addEventListener('DOMContentLoaded', function() {
+
+// Sofort nach Script-Laden initialisieren (nicht auf DOMContentLoaded warten!)
+function initAppSettings() {
   try {
     appSettings = new AppSettings('Lebenskosten');
     appSettings.loadAllIntoUI();
+    
+    // WICHTIG: Lade AppSettings direkt in die App-Variablen!
+    if(window.GH) {
+      GH.owner = appSettings.getSetting('github_owner') || '';
+      GH.token = appSettings.getSetting('github_token') || '';
+      console.log('✅ AppSettings → GH synced:', {owner: GH.owner, token: GH.token ? '***' : ''});
+    }
+    
+    console.log('✅ AppSettings initialized');
+    return true;
+  } catch(e) {
+    console.error('AppSettings init error:', e);
+    return false;
+  }
+}
+
+// Starte beim DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    initAppSettings();
     
     // Auto-Sync starten
     if(typeof autoSyncInit === 'function') {
@@ -1556,7 +1574,7 @@ document.addEventListener('DOMContentLoaded', function() {
       autoSyncInit();
     }
   } catch(e) {
-    console.error('AppSettings error:', e);
+    console.error('DOMContentLoaded error:', e);
   }
 });
 </script>
