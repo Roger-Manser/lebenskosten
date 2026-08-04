@@ -5,7 +5,7 @@
 
 const APP_SETTINGS = {
   'Rezeptbuch': {
-    version: '3.3',
+    version: '3.4',
     fields: [
       { id: 'github_token', label: 'GitHub Token', type: 'password' },
       { id: 'github_owner', label: 'GitHub Owner', type: 'text', placeholder: 'roger-manser' },
@@ -23,7 +23,7 @@ const APP_SETTINGS = {
     ]
   },
   'Fahrtenbuch': {
-    version: '3.3',
+    version: '3.4',
     fields: [
       { id: 'github_token', label: 'GitHub Token', type: 'password' },
       { id: 'github_owner', label: 'GitHub Owner', type: 'text', placeholder: 'roger-manser' },

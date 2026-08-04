@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v3.3</title>
+<title>Lebenskosten v3.4</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.3</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.4</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.9 · Rev 0</div>
@@ -252,15 +252,6 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <h3 class="sec" style="margin-top:0">Zurücksetzen</h3>
       <button class="btn danger" onclick="resetManual()">Alle manuellen Einträge löschen</button>
     </div>
-  
-    
-
-  
-    
-
-  
-    
-
   
     <div class="card">
       <h3 class="sec" style="margin-top:0">⚙️ App-Einstellungen</h3>
@@ -419,7 +410,7 @@ function restore(){
     const raw = localStorage.getItem('lebenskosten1');
     if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.MAN)) MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=+d.rev||0; }
   }catch(e){}
-  // GH settings werden jetzt von AppSettings geladen (siehe initAppSettings)
+  try{ const g=localStorage.getItem('lebenskostenGh'); if(g) GH=Object.assign(GH,JSON.parse(g)); }catch(e){}
   try{ const s=localStorage.getItem('lebenskostenSync'); if(s) SY=Object.assign(SY,JSON.parse(s)); }catch(e){}
   try{ const i=localStorage.getItem('lebenskostenImp'); if(i){const d=JSON.parse(i); if(Array.isArray(d)) IMP=d;} }catch(e){}
   try{ const p=localStorage.getItem('lebenskostenPeriod'); if(p) period=p; }catch(e){}
@@ -542,13 +533,13 @@ function loadGhConfig(){
 function saveAnthropicKey(){
   const key=document.getElementById('anthropicKey').value.trim();
   if(!key){ toast('Bitte einen Key eingeben'); return; }
-  if(appSettings) appSettings.setSetting('anthropic_api_key', key);
+  localStorage.setItem('lk_anthropic_key', key);
   document.getElementById('anthropicKeyStatus').textContent='✓ Key gespeichert';
   document.getElementById('anthropicKeyStatus').style.color='var(--accent)';
   toast('API-Key gespeichert');
 }
 function loadAnthropicKey(){
-  const key=(appSettings ? appSettings.getSetting('anthropic_api_key') : '')||'';
+  const key=localStorage.getItem('lk_anthropic_key')||'';
   const el=document.getElementById('anthropicKey');
   if(el) el.value=key;
   const st=document.getElementById('anthropicKeyStatus');
@@ -559,14 +550,7 @@ function saveGhConfig(){
   GH.token  = document.getElementById('ghToken').value.trim();
   GH.hbRepo = document.getElementById('ghHbRepo').value.trim() || 'haushaltbuch';
   GH.fbRepo = document.getElementById('ghFbRepo').value.trim() || 'fahrtenbuch';
-  try{ 
-    if(appSettings) {
-      appSettings.setSetting('github_owner', GH.owner || '');
-      appSettings.setSetting('github_repo', GH.repo || '');
-      appSettings.setSetting('github_token', GH.token || '');
-      console.log('✅ GH → AppSettings gespeichert');
-    }
-  }catch(e){console.error('Save error:', e);}
+  try{ localStorage.setItem('lebenskostenGh', JSON.stringify(GH)); }catch(e){}
   toast('Verbindung gespeichert');
 }
 function ghStatus(msg, kind){
@@ -1359,7 +1343,7 @@ function receiptHint(msg){ const el=document.getElementById('receiptHint'); if(e
 
 function startReceipt(){
   // API-Key vorhanden?
-  const key=(appSettings ? appSettings.getSetting('anthropic_api_key') : '').trim();
+  const key=(localStorage.getItem('lk_anthropic_key')||'').trim();
   if(!key){
     // Key-Eingabe direkt anzeigen
     document.getElementById('receiptArea').hidden=false;
@@ -1402,7 +1386,7 @@ async function processReceipt(ev){
     prev.innerHTML=`<div style="padding:10px;background:var(--bg);border-radius:8px;margin-top:6px;font-size:13px;color:var(--ink-soft)">📄 ${esc(file.name)}</div>`;
   }
 
-  const key=(appSettings ? appSettings.getSetting('anthropic_api_key') : '').trim();
+  const key=(localStorage.getItem('lk_anthropic_key')||'').trim();
   if(!key){ receiptHint('Kein API-Key hinterlegt – bitte im Tab «Daten» eintragen.'); return; }
 
   receiptHint('Sende an Claude API…');
@@ -1539,72 +1523,32 @@ function applyUpdate(){
 </script>
 <script src="app-settings-config-FIX.js"></script>
 <script>
-// GLOBALE AppSettings Variable
 var appSettings = null;
 
-// Sofort nach Script-Laden initialisieren (nicht auf DOMContentLoaded warten!)
-function initAppSettings() {
-  try {
-    appSettings = new AppSettings('Lebenskosten');
-    appSettings.loadAllIntoUI();
-    
-    // WICHTIG: Lade AppSettings direkt in die App-Variablen!
-    if(window.GH) {
-      GH.owner = appSettings.getSetting('github_owner') || '';
-      GH.token = appSettings.getSetting('github_token') || '';
-      console.log('✅ AppSettings → GH synced:', {owner: GH.owner, token: GH.token ? '***' : ''});
-    }
-    
-    console.log('✅ AppSettings initialized');
-    return true;
-  } catch(e) {
-    console.error('AppSettings init error:', e);
-    return false;
+// Initialisiere AppSettings sofort
+function setupAppSettings() {
+  appSettings = new AppSettings('Lebenskosten');
+  appSettings.loadAllIntoUI();
+  
+  // Lade Werte in App
+  if(window.GH) {
+    GH.owner = appSettings.getSetting('github_owner') || '';
+    GH.token = appSettings.getSetting('github_token') || '';
+    console.log('✅ AppSettings → GH loaded');
   }
 }
 
-// Starte beim DOMContentLoaded
+// Beim Laden aufrufen
 document.addEventListener('DOMContentLoaded', function() {
   try {
-    initAppSettings();
-    
-    // Auto-Sync starten
+    setupAppSettings();
     if(typeof autoSyncInit === 'function') {
       console.log('🔄 Starte Auto-Sync...');
       autoSyncInit();
     }
   } catch(e) {
-    console.error('DOMContentLoaded error:', e);
+    console.error('Init error:', e);
   }
-});
-</script>
-<script>
-// AUTO-SYNC FUNKTIONALITÄT
-let autoSyncInterval = null;
-const AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 Minuten
-
-function autoSyncInit() {
-  // Sofort einmal beim Start synchen
-  if(typeof cloudPull === 'function') {
-    console.log('🔄 Initialer Auto-Sync beim Start...');
-    cloudPull().catch(e => console.error('Auto-Sync error:', e));
-  }
-  
-  // Regelmässig synchen (alle 30 Minuten)
-  if(autoSyncInterval) clearInterval(autoSyncInterval);
-  autoSyncInterval = setInterval(() => {
-    if(typeof cloudPull === 'function') {
-      console.log('🔄 Auto-Sync Interval: ' + new Date().toLocaleTimeString());
-      cloudPull().catch(e => console.error('Auto-Sync interval error:', e));
-    }
-  }, AUTO_SYNC_INTERVAL_MS);
-  
-  console.log('✅ Auto-Sync aktiv (alle 30 Min)');
-}
-
-// Cleanup bei Unload
-window.addEventListener('beforeunload', () => {
-  if(autoSyncInterval) clearInterval(autoSyncInterval);
 });
 </script>
 </body>
