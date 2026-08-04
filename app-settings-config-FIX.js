@@ -46,18 +46,23 @@ class AppSettings {
     this.appName = appName;
     this.config = APP_SETTINGS[appName] || {};
     this.storageKey = appName + '_settings';
-    this.initHiddenInput();
+    this.setupFileInput();
   }
 
-  initHiddenInput() {
-    // Erstelle einen versteckten File-Input für den Import
-    if (!document.getElementById('app_settings_file_input')) {
+  setupFileInput() {
+    // Verbinde den versteckten File-Input mit dem Handler
+    const fileInput = document.getElementById('app_settings_file_input');
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+      console.log('✅ File-Input handler registered');
+    } else {
+      console.warn('⚠️ File-Input element not found - creating one');
       const input = document.createElement('input');
       input.type = 'file';
       input.id = 'app_settings_file_input';
       input.accept = '.json';
       input.style.display = 'none';
-      input.onchange = (e) => this.handleFileSelect(e);
+      input.addEventListener('change', (e) => this.handleFileSelect(e));
       document.body.appendChild(input);
     }
   }
@@ -238,7 +243,7 @@ class AppSettings {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      alert('✅ Settings exportiert: ' + filename);
+      alert('✅ Settings exportiert:\n' + filename);
     } catch (e) {
       console.error('Error exporting:', e);
       alert('❌ Export fehlgeschlagen');
@@ -247,9 +252,11 @@ class AppSettings {
 
   importSettings() {
     try {
-      const input = document.getElementById('app_settings_file_input');
-      if (input) {
-        input.click();
+      const fileInput = document.getElementById('app_settings_file_input');
+      if (fileInput) {
+        fileInput.click();
+      } else {
+        alert('❌ Datei-Dialog nicht verfügbar');
       }
     } catch (err) {
       console.error('Error opening file dialog:', err);
@@ -308,4 +315,4 @@ class AppSettings {
   }
 }
 
-console.log('✅ AppSettings v1.2 loaded (mit Datei-Dialog)');
+console.log('✅ AppSettings v1.2 loaded (Datei-Dialog ready)');
