@@ -1,6 +1,6 @@
 /**
  * APP-SPEZIFISCHE SETTINGS – ALLE 4 APPS
- * Version: 1.1 – VERBESSERT
+ * Version: 1.2 – MIT DATEI-DIALOG
  */
 
 const APP_SETTINGS = {
@@ -46,6 +46,20 @@ class AppSettings {
     this.appName = appName;
     this.config = APP_SETTINGS[appName] || {};
     this.storageKey = appName + '_settings';
+    this.initHiddenInput();
+  }
+
+  initHiddenInput() {
+    // Erstelle einen versteckten File-Input für den Import
+    if (!document.getElementById('app_settings_file_input')) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.id = 'app_settings_file_input';
+      input.accept = '.json';
+      input.style.display = 'none';
+      input.onchange = (e) => this.handleFileSelect(e);
+      document.body.appendChild(input);
+    }
   }
 
   getSetting(key) {
@@ -233,24 +247,50 @@ class AppSettings {
 
   importSettings() {
     try {
-      const json = prompt('Paste deine Settings JSON:');
-      if (!json) return;
-
-      const data = JSON.parse(json);
-      if (data.app !== this.appName) {
-        alert('❌ Falsche App! Erwartet: ' + this.appName + ', Erhalten: ' + data.app);
-        return;
+      const input = document.getElementById('app_settings_file_input');
+      if (input) {
+        input.click();
       }
-
-      const settings = data.settings || {};
-      Object.keys(settings).forEach(key => {
-        this.setSetting(key, settings[key]);
-      });
-
-      alert('✅ Settings importiert!');
-      this.loadAllIntoUI();
     } catch (err) {
-      console.error('Error importing:', err);
+      console.error('Error opening file dialog:', err);
+      alert('❌ Fehler beim Öffnen des Datei-Dialogs');
+    }
+  }
+
+  handleFileSelect(event) {
+    try {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const json = e.target.result;
+          const data = JSON.parse(json);
+
+          if (data.app !== this.appName) {
+            alert('❌ Falsche App!\nErwartet: ' + this.appName + '\nErhalten: ' + data.app);
+            return;
+          }
+
+          const settings = data.settings || {};
+          Object.keys(settings).forEach(key => {
+            this.setSetting(key, settings[key]);
+          });
+
+          alert('✅ Settings importiert!\n(' + file.name + ')');
+          this.loadAllIntoUI();
+        } catch (err) {
+          console.error('Error parsing JSON:', err);
+          alert('❌ Fehler beim Lesen der Datei:\n' + err.message);
+        }
+      };
+      reader.readAsText(file);
+
+      // Reset input für nächsten Import
+      event.target.value = '';
+    } catch (err) {
+      console.error('Error in handleFileSelect:', err);
       alert('❌ Fehler: ' + err.message);
     }
   }
@@ -268,4 +308,4 @@ class AppSettings {
   }
 }
 
-console.log('✅ AppSettings v1.1 loaded');
+console.log('✅ AppSettings v1.2 loaded (mit Datei-Dialog)');
