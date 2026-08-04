@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.5</title>
+<title>Lebenskosten v4.6</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.5</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.6</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.9 · Rev 0</div>
@@ -376,7 +376,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.5';
+const APP_VERSION = 'v4.6';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -581,10 +581,15 @@ function mapHaushalt(S){
     const menge = +e.menge||0, preis = +e.preis||0;
     const amount = Math.round(menge*preis*100)/100;
     if(!(amount>0)) return;                  // Einträge ohne Preis (z.B. Bestandskorrektur) nicht als Kosten
+    
+    // Baue desc mit kaufort auf: "Migros - Tomaten"
+    const itemName = e.name || 'Einkauf';
+    const desc = e.kaufort ? e.kaufort + ' - ' + itemName : itemName;
+    
     out.push({
       id:'hb_'+(e.zeit||uid()),
       src:'house',
-      desc:e.name||'Einkauf',
+      desc:desc,
       amount,
       date:e.datum||today(),
       cat:'Haushalt / Einkauf'+(e.kat?' · '+e.kat:''),
@@ -839,22 +844,18 @@ function renderList(){
       const tagLabel = data.src==='fuel'?'AUTO':data.src==='house'?'HAUS':'MAN';
       
       // cat kann sein: "Haushalt / Einkauf · Gemüse & Früchte"
-      // Nimm nur den Teil VOR dem "·" und splitte dann nach "/"
+      // Nimm nur den Teil VOR dem "·"
       const catBase = cat.split('·')[0].trim();  // "Haushalt / Einkauf"
       const catParts = catBase.split(' / ');
       const mainCat = catParts.length > 1 ? catParts[1] : catBase;  // "Einkauf"
-      const subCat = catParts.length > 1 ? catParts[0] : '';  // "Haushalt"
       
-      // Nutze erste Position für Geschäft-Extraktion
+      // Nutze erste Position
       const firstItem = data.items[0];
       
-      // Extrahiere Geschäft aus description (z.B. "Migros - Brot" → "Migros")
-      let store = '';
+      // Extrahiere Geschäft aus description (format: "Migros - Tomaten")
+      let store = 'Sonstiges';
       if (firstItem?.desc && firstItem.desc.includes(' - ')) {
         store = firstItem.desc.split(' - ')[0].trim();
-      } else {
-        // Fallback: nutze subCat wenn kein " - " im desc
-        store = subCat || 'Sonstiges';
       }
       
       html += `<div class="entry" style="cursor:default;">
