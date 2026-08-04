@@ -62,7 +62,11 @@ class AppSettings {
   getSetting(key) {
     try {
       const all = JSON.parse(localStorage.getItem(this.storageKey) || '{}');
-      return all[key] || '';
+      const val = all[key] || '';
+      if(key === 'sync_filename') {
+        console.log('getSetting:', key, '=', val);
+      }
+      return val;
     } catch (e) {
       return '';
     }
@@ -73,8 +77,9 @@ class AppSettings {
       const all = JSON.parse(localStorage.getItem(this.storageKey) || '{}');
       all[key] = value;
       localStorage.setItem(this.storageKey, JSON.stringify(all));
+      console.log('setSetting: Gespeichert', key, '=', value, 'in localStorage');
     } catch (e) {
-      console.error('Error setting:', e);
+      console.error('setSetting error:', e);
     }
   }
 
@@ -102,15 +107,24 @@ class AppSettings {
 
   saveAll() {
     try {
-      if (!this.config.fields) return;
+      console.log('saveAll() called');
+      if (!this.config.fields) {
+        console.error('saveAll: config.fields nicht definiert!');
+        return;
+      }
+      console.log('saveAll: Felder zu speichern:', this.config.fields.map(f => f.id));
+      
       this.config.fields.forEach(field => {
         const input = document.getElementById('setting_' + field.id);
+        console.log('saveAll: Feld', field.id, 'input gefunden?', !!input, 'value:', input?.value);
         if (input) {
           this.setSetting(field.id, input.value);
+          console.log('  ✅ Gespeichert:', field.id, '=', input.value);
         }
       });
       alert('✅ Settings gespeichert!');
     } catch (e) {
+      console.error('saveAll error:', e);
       alert('❌ Fehler beim Speichern');
     }
   }
