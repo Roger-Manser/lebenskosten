@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.29</title>
+<title>Lebenskosten v4.30</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.29</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.30</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.29';
+const APP_VERSION = 'v4.30';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -653,9 +653,20 @@ function mapHaushalt(S){
     const artikel = artikelByID[e.aid];
     let kaufort = '';
     
+    if(debugCount < 3 && artikel){
+      console.log(`\n=== DEBUG mapHaushalt[${debugCount}]: "${itemName}" (aid=${e.aid}) ===`);
+      console.log(`Log-Datum: "${e.datum}", Log-typ: "${e.t}"`);
+      console.log(`preisHistorie-Einträge: ${artikel.preisHistorie?.length || 0}`);
+      
+      if(artikel.preisHistorie && Array.isArray(artikel.preisHistorie)){
+        artikel.preisHistorie.forEach((ph, idx) => {
+          console.log(`  [${idx}] datum="${ph.datum}", typ="${ph.typ}", kaufort="${ph.kaufort || '(LEER)'}", menge=${ph.menge}`);
+        });
+      }
+    }
+    
     if(artikel && artikel.preisHistorie && Array.isArray(artikel.preisHistorie)){
       // Finde den preisHistorie-Eintrag der zu diesem Log-Eintrag passt
-      // Kriterien: typ='ein' (oder 'in'), Datum ähnlich, optionally menge
       const matchingEntry = artikel.preisHistorie.find(ph => {
         const phTyp = ph.typ === 'ein' || ph.typ === 'in';
         const logTyp = e.t === 'ein' || e.t === 'in';
@@ -665,15 +676,15 @@ function mapHaushalt(S){
       if(matchingEntry){
         kaufort = matchingEntry.kaufort || '';
         if(debugCount < 3){
-          console.log(`mapHaushalt[${debugCount}]: "${itemName}" → kaufort="${kaufort}" (preisHistorie match!)`);
+          console.log(`✅ MATCH gefunden! kaufort="${kaufort}"`);
+          debugCount++;
+        }
+      } else {
+        if(debugCount < 3){
+          console.log(`❌ KEIN MATCH gefunden (Datum oder Typ passt nicht)`);
           debugCount++;
         }
       }
-    }
-    
-    if(!kaufort && debugCount < 5){
-      console.log(`mapHaushalt[${debugCount}]: "${itemName}" → KEIN kaufort gefunden (aid=${e.aid})`);
-      debugCount++;
     }
     
     const desc = kaufort ? kaufort + ' - ' + itemName : itemName;
@@ -690,7 +701,7 @@ function mapHaushalt(S){
     });
   });
   
-  console.log('mapHaushalt: FERTIG, mapped:', out.length, 'Einträge');
+  console.log('\nmapHaushalt: FERTIG, mapped:', out.length, 'Einträge');
   return out;
 }
 /* Fahrtenbuch: jeder Tankstopp + jede Einzelkosten + monatliche Buchungen, einzeln */
