@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.27</title>
+<title>Lebenskosten v4.29</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.27</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.29</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.27';
+const APP_VERSION = 'v4.29';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -628,46 +628,55 @@ async function fetchRepoFile(repo, file){
 function mapHaushalt(S){
   const out=[];
   const log = (S && Array.isArray(S.log)) ? S.log : [];
+  const artikelByID = {};
   
-  console.log('mapHaushalt: Starte mit', log.length, 'Log-Einträgen');
-  
-  // DEBUG: Zeige ALLE Felder des ersten Eingangs
-  if(log.length > 0){
-    const first = log.find(e => e.t==='ein' || e.t==='in');
-    if(first){
-      console.log('=== ERSTES LOG-OBJEKT (Eingang) - ALLE FELDER ===');
-      console.log('Feldnamen:', Object.keys(first));
-      Object.keys(first).forEach(k => {
-        console.log(`  ${k}: ${JSON.stringify(first[k])}`);
-      });
-      // Alternative Ausgabe
-      console.log('JSON:', JSON.stringify(first));
-    }
+  // Baue Index der Artikel
+  if(S && Array.isArray(S.a)){
+    S.a.forEach(a => { artikelByID[a.id] = a; });
   }
   
+  console.log('mapHaushalt: Log-Einträge:', log.length, 'Artikel:', S && S.a ? S.a.length : 0);
+  
   let debugCount = 0;
-  log.forEach((e, idx)=>{
+  log.forEach(e=>{
     // Eingang erkennen: 'ein' (deutsch) oder 'in' (alt); Ausgänge ('aus'/'out') ignorieren
     const isEingang = (e.t==='ein' || e.t==='in');
     if(!isEingang) return;
-    if(e.geloescht) return;                 // gelöschte Log-Einträge überspringen
+    if(e.geloescht) return;
     const menge = +e.menge||0, preis = +e.preis||0;
     const amount = Math.round(menge*preis*100)/100;
-    if(!(amount>0)) return;                  // Einträge ohne Preis (z.B. Bestandskorrektur) nicht als Kosten
+    if(!(amount>0)) return;
     
-    // Baue desc mit geschaeft auf: "Migros - Tomaten"
     const itemName = e.name || 'Einkauf';
     
-    // Debug erste 3 Einträge
-    if(debugCount < 3){
-      console.log(`mapHaushalt[${debugCount}]: name="${itemName}", geschaeft="${e.geschaeft || '(LEER!)'}"`);
+    // WICHTIG: Lese kaufort aus der passenden preisHistorie!
+    const artikel = artikelByID[e.aid];
+    let kaufort = '';
+    
+    if(artikel && artikel.preisHistorie && Array.isArray(artikel.preisHistorie)){
+      // Finde den preisHistorie-Eintrag der zu diesem Log-Eintrag passt
+      // Kriterien: typ='ein' (oder 'in'), Datum ähnlich, optionally menge
+      const matchingEntry = artikel.preisHistorie.find(ph => {
+        const phTyp = ph.typ === 'ein' || ph.typ === 'in';
+        const logTyp = e.t === 'ein' || e.t === 'in';
+        return phTyp && logTyp && ph.datum === e.datum;
+      });
+      
+      if(matchingEntry){
+        kaufort = matchingEntry.kaufort || '';
+        if(debugCount < 3){
+          console.log(`mapHaushalt[${debugCount}]: "${itemName}" → kaufort="${kaufort}" (preisHistorie match!)`);
+          debugCount++;
+        }
+      }
+    }
+    
+    if(!kaufort && debugCount < 5){
+      console.log(`mapHaushalt[${debugCount}]: "${itemName}" → KEIN kaufort gefunden (aid=${e.aid})`);
       debugCount++;
     }
     
-    // Lese geschaeft aus Log-Eintrag
-    let geschaeft = e.geschaeft || '';
-    
-    const desc = geschaeft ? geschaeft + ' - ' + itemName : itemName;
+    const desc = kaufort ? kaufort + ' - ' + itemName : itemName;
     
     out.push({
       id:'hb_'+(e.zeit||uid()),
@@ -680,6 +689,7 @@ function mapHaushalt(S){
       note:(menge!==1?menge+(e.einheit?' '+e.einheit:'')+' à '+CHF(preis):'')
     });
   });
+  
   console.log('mapHaushalt: FERTIG, mapped:', out.length, 'Einträge');
   return out;
 }
