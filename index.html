@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.31</title>
+<title>Lebenskosten v4.32</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.31</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.32</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.31';
+const APP_VERSION = 'v4.32';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -627,39 +627,19 @@ async function fetchRepoFile(repo, file){
 /* Haushaltbuch: alle Eingänge (t==='ein', auch 'in'), Betrag = menge*preis */
 function mapHaushalt(S){
   const out=[];
-  
-  // DEBUG: Zeige komplette Struktur der Haushaltsbuch-Daten
-  console.log('=== HAUSHALTSBUCH-DATEN STRUKTUR ===');
-  if(S){
-    console.log('Feld-Namen auf oberster Ebene:', Object.keys(S));
-    console.log('Komplette Struktur (begrenzt):', JSON.stringify(S).substring(0, 1000));
-  } else {
-    console.log('S ist null/undefined!');
-    return out;
-  }
-  
-  // Versuche verschiedene mögliche Feldnamen für die Artikel-Liste
-  let artikelList = S.a || S.artikel || S.items || S.articles || S.products || [];
-  console.log('Artikel-Liste: gefunden unter "a"?', Array.isArray(S.a), 'Länge:', S.a?.length || 0);
-  if(!Array.isArray(artikelList) || artikelList.length === 0){
-    console.log('Versuche andere Feldnamen:');
-    console.log('  S.artikel:', Array.isArray(S.artikel), S.artikel?.length || 0);
-    console.log('  S.items:', Array.isArray(S.items), S.items?.length || 0);
-    console.log('  S.articles:', Array.isArray(S.articles), S.articles?.length || 0);
-    console.log('  S.products:', Array.isArray(S.products), S.products?.length || 0);
-  }
-  
   const log = (S && Array.isArray(S.log)) ? S.log : [];
   const artikelByID = {};
+  const geschafteListe = S?.geschafte || []; // Liste der Laden
   
-  // Baue Index der Artikel
-  if(Array.isArray(artikelList)){
-    artikelList.forEach(a => { 
+  // Baue Index der Artikel - verwende S.artikel statt S.a!
+  if(S && Array.isArray(S.artikel)){
+    S.artikel.forEach(a => { 
       if(a.id !== undefined) artikelByID[a.id] = a; 
     });
   }
   
   console.log('mapHaushalt: Log-Einträge:', log.length, 'Artikel:', Object.keys(artikelByID).length);
+  console.log('geschafte-Liste:', geschafteListe);
   
   let debugCount = 0;
   log.forEach(e=>{
@@ -676,12 +656,25 @@ function mapHaushalt(S){
     let kaufort = '';
     
     if(artikel && artikel.preisHistorie && Array.isArray(artikel.preisHistorie)){
+      // Finde preisHistorie-Eintrag der passt
       const matchingEntry = artikel.preisHistorie.find(ph => {
         const phTyp = ph.typ === 'ein' || ph.typ === 'in';
         const logTyp = e.t === 'ein' || e.t === 'in';
         return phTyp && logTyp && ph.datum === e.datum;
       });
-      if(matchingEntry) kaufort = matchingEntry.kaufort || '';
+      
+      if(matchingEntry){
+        // Versuche verschiedene Feldnamen für den Laden
+        kaufort = matchingEntry.kaufort || 
+                  (matchingEntry.geschaefteIndex !== undefined ? geschafteListe[matchingEntry.geschaefteIndex] : '') ||
+                  (matchingEntry.ladenIndex !== undefined ? geschafteListe[matchingEntry.ladenIndex] : '') ||
+                  '';
+                  
+        if(debugCount < 3){
+          console.log(`mapHaushalt[${debugCount}]: "${itemName}" → kaufort="${kaufort}" (gefunden!)`);
+          debugCount++;
+        }
+      }
     }
     
     const desc = kaufort ? kaufort + ' - ' + itemName : itemName;
