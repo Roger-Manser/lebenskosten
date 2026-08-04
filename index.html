@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.30</title>
+<title>Lebenskosten v4.31</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.30</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.31</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.30';
+const APP_VERSION = 'v4.31';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -627,19 +627,43 @@ async function fetchRepoFile(repo, file){
 /* Haushaltbuch: alle Eingänge (t==='ein', auch 'in'), Betrag = menge*preis */
 function mapHaushalt(S){
   const out=[];
+  
+  // DEBUG: Zeige komplette Struktur der Haushaltsbuch-Daten
+  console.log('=== HAUSHALTSBUCH-DATEN STRUKTUR ===');
+  if(S){
+    console.log('Feld-Namen auf oberster Ebene:', Object.keys(S));
+    console.log('Komplette Struktur (begrenzt):', JSON.stringify(S).substring(0, 1000));
+  } else {
+    console.log('S ist null/undefined!');
+    return out;
+  }
+  
+  // Versuche verschiedene mögliche Feldnamen für die Artikel-Liste
+  let artikelList = S.a || S.artikel || S.items || S.articles || S.products || [];
+  console.log('Artikel-Liste: gefunden unter "a"?', Array.isArray(S.a), 'Länge:', S.a?.length || 0);
+  if(!Array.isArray(artikelList) || artikelList.length === 0){
+    console.log('Versuche andere Feldnamen:');
+    console.log('  S.artikel:', Array.isArray(S.artikel), S.artikel?.length || 0);
+    console.log('  S.items:', Array.isArray(S.items), S.items?.length || 0);
+    console.log('  S.articles:', Array.isArray(S.articles), S.articles?.length || 0);
+    console.log('  S.products:', Array.isArray(S.products), S.products?.length || 0);
+  }
+  
   const log = (S && Array.isArray(S.log)) ? S.log : [];
   const artikelByID = {};
   
   // Baue Index der Artikel
-  if(S && Array.isArray(S.a)){
-    S.a.forEach(a => { artikelByID[a.id] = a; });
+  if(Array.isArray(artikelList)){
+    artikelList.forEach(a => { 
+      if(a.id !== undefined) artikelByID[a.id] = a; 
+    });
   }
   
-  console.log('mapHaushalt: Log-Einträge:', log.length, 'Artikel:', S && S.a ? S.a.length : 0);
+  console.log('mapHaushalt: Log-Einträge:', log.length, 'Artikel:', Object.keys(artikelByID).length);
   
   let debugCount = 0;
   log.forEach(e=>{
-    // Eingang erkennen: 'ein' (deutsch) oder 'in' (alt); Ausgänge ('aus'/'out') ignorieren
+    // Eingang erkennen
     const isEingang = (e.t==='ein' || e.t==='in');
     if(!isEingang) return;
     if(e.geloescht) return;
@@ -648,43 +672,16 @@ function mapHaushalt(S){
     if(!(amount>0)) return;
     
     const itemName = e.name || 'Einkauf';
-    
-    // WICHTIG: Lese kaufort aus der passenden preisHistorie!
     const artikel = artikelByID[e.aid];
     let kaufort = '';
     
-    if(debugCount < 3 && artikel){
-      console.log(`\n=== DEBUG mapHaushalt[${debugCount}]: "${itemName}" (aid=${e.aid}) ===`);
-      console.log(`Log-Datum: "${e.datum}", Log-typ: "${e.t}"`);
-      console.log(`preisHistorie-Einträge: ${artikel.preisHistorie?.length || 0}`);
-      
-      if(artikel.preisHistorie && Array.isArray(artikel.preisHistorie)){
-        artikel.preisHistorie.forEach((ph, idx) => {
-          console.log(`  [${idx}] datum="${ph.datum}", typ="${ph.typ}", kaufort="${ph.kaufort || '(LEER)'}", menge=${ph.menge}`);
-        });
-      }
-    }
-    
     if(artikel && artikel.preisHistorie && Array.isArray(artikel.preisHistorie)){
-      // Finde den preisHistorie-Eintrag der zu diesem Log-Eintrag passt
       const matchingEntry = artikel.preisHistorie.find(ph => {
         const phTyp = ph.typ === 'ein' || ph.typ === 'in';
         const logTyp = e.t === 'ein' || e.t === 'in';
         return phTyp && logTyp && ph.datum === e.datum;
       });
-      
-      if(matchingEntry){
-        kaufort = matchingEntry.kaufort || '';
-        if(debugCount < 3){
-          console.log(`✅ MATCH gefunden! kaufort="${kaufort}"`);
-          debugCount++;
-        }
-      } else {
-        if(debugCount < 3){
-          console.log(`❌ KEIN MATCH gefunden (Datum oder Typ passt nicht)`);
-          debugCount++;
-        }
-      }
+      if(matchingEntry) kaufort = matchingEntry.kaufort || '';
     }
     
     const desc = kaufort ? kaufort + ' - ' + itemName : itemName;
@@ -701,7 +698,7 @@ function mapHaushalt(S){
     });
   });
   
-  console.log('\nmapHaushalt: FERTIG, mapped:', out.length, 'Einträge');
+  console.log('mapHaushalt: FERTIG, mapped:', out.length, 'Einträge');
   return out;
 }
 /* Fahrtenbuch: jeder Tankstopp + jede Einzelkosten + monatliche Buchungen, einzeln */
