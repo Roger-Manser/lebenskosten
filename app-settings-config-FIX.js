@@ -1,6 +1,6 @@
 /**
  * APP-SPEZIFISCHE SETTINGS – ALLE 4 APPS
- * Version: 1.2 – MIT DATEI-DIALOG
+ * Version: 1.2 (App v3.0) – MIT DATEI-DIALOG
  */
 
 const APP_SETTINGS = {
@@ -46,24 +46,15 @@ class AppSettings {
     this.appName = appName;
     this.config = APP_SETTINGS[appName] || {};
     this.storageKey = appName + '_settings';
-    this.setupFileInput();
+    console.log('✅ AppSettings v1.2 (App v3.0) initialized for: ' + appName);
+    this.setupFileHandler();
   }
 
-  setupFileInput() {
-    // Verbinde den versteckten File-Input mit dem Handler
+  setupFileHandler() {
     const fileInput = document.getElementById('app_settings_file_input');
     if (fileInput) {
       fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
-      console.log('✅ File-Input handler registered');
-    } else {
-      console.warn('⚠️ File-Input element not found - creating one');
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.id = 'app_settings_file_input';
-      input.accept = '.json';
-      input.style.display = 'none';
-      input.addEventListener('change', (e) => this.handleFileSelect(e));
-      document.body.appendChild(input);
+      console.log('✅ File input handler attached');
     }
   }
 
@@ -72,7 +63,6 @@ class AppSettings {
       const all = JSON.parse(localStorage.getItem(this.storageKey) || '{}');
       return all[key] || '';
     } catch (e) {
-      console.error('Error getting setting:', e);
       return '';
     }
   }
@@ -83,7 +73,7 @@ class AppSettings {
       all[key] = value;
       localStorage.setItem(this.storageKey, JSON.stringify(all));
     } catch (e) {
-      console.error('Error setting setting:', e);
+      console.error('Error setting:', e);
     }
   }
 
@@ -91,7 +81,6 @@ class AppSettings {
     try {
       return JSON.parse(localStorage.getItem(this.storageKey) || '{}');
     } catch (e) {
-      console.error('Error getting all settings:', e);
       return {};
     }
   }
@@ -106,7 +95,7 @@ class AppSettings {
         }
       });
     } catch (e) {
-      console.error('Error loading settings to UI:', e);
+      console.error('Error loading UI:', e);
     }
   }
 
@@ -121,38 +110,30 @@ class AppSettings {
       });
       alert('✅ Settings gespeichert!');
     } catch (e) {
-      console.error('Error saving settings:', e);
       alert('❌ Fehler beim Speichern');
     }
   }
 
   async testGitHub() {
+    const token = this.getSetting('github_token');
+    const owner = this.getSetting('github_owner');
+    const repo = this.getSetting('github_repo');
+    const resultDiv = document.getElementById('test_github_token');
+
+    if (!resultDiv) return;
+
+    if (!owner || !repo) {
+      resultDiv.innerHTML = '❌ GitHub Owner oder Repo fehlt';
+      return;
+    }
+
+    if (!token) {
+      resultDiv.innerHTML = '❌ GitHub Token fehlt';
+      return;
+    }
+
     try {
-      const token = this.getSetting('github_token');
-      const owner = this.getSetting('github_owner');
-      const repo = this.getSetting('github_repo');
-      const resultDiv = document.getElementById('test_github_token');
-
-      if (!resultDiv) {
-        console.error('Result div not found');
-        return;
-      }
-
-      if (!owner || !repo) {
-        resultDiv.innerHTML = '❌ GitHub Owner oder Repo fehlt';
-        resultDiv.className = 'test-result error';
-        return;
-      }
-
-      if (!token) {
-        resultDiv.innerHTML = '❌ GitHub Token fehlt';
-        resultDiv.className = 'test-result error';
-        return;
-      }
-
       resultDiv.innerHTML = '🔄 Teste...';
-      resultDiv.className = 'test-result loading';
-
       const response = await fetch(
         'https://api.github.com/repos/' + owner + '/' + repo,
         { headers: { 'Authorization': 'token ' + token } }
@@ -160,67 +141,44 @@ class AppSettings {
 
       if (response.ok) {
         resultDiv.innerHTML = '✅ GitHub Token valid!';
-        resultDiv.className = 'test-result success';
       } else if (response.status === 401) {
         resultDiv.innerHTML = '❌ Token ungültig (401)';
-        resultDiv.className = 'test-result error';
       } else if (response.status === 404) {
-        resultDiv.innerHTML = '❌ Repo nicht gefunden (404) - Owner oder Repo falsch?';
-        resultDiv.className = 'test-result error';
+        resultDiv.innerHTML = '❌ Repo nicht gefunden (404)';
       } else {
         resultDiv.innerHTML = '❌ Fehler: ' + response.status;
-        resultDiv.className = 'test-result error';
       }
     } catch (err) {
-      const resultDiv = document.getElementById('test_github_token');
-      if (resultDiv) {
-        resultDiv.innerHTML = '❌ ' + err.message;
-        resultDiv.className = 'test-result error';
-      }
-      console.error('Test error:', err);
+      resultDiv.innerHTML = '❌ ' + err.message;
     }
   }
 
   async testAnthropicKey() {
+    const apiKey = this.getSetting('anthropic_api_key');
+    const resultDiv = document.getElementById('test_anthropic_api_key');
+
+    if (!resultDiv) return;
+
+    if (!apiKey) {
+      resultDiv.innerHTML = '❌ API Key fehlt';
+      return;
+    }
+
     try {
-      const apiKey = this.getSetting('anthropic_api_key');
-      const resultDiv = document.getElementById('test_anthropic_api_key');
-
-      if (!resultDiv) {
-        console.error('Result div not found');
-        return;
-      }
-
-      if (!apiKey) {
-        resultDiv.innerHTML = '❌ API Key fehlt';
-        resultDiv.className = 'test-result error';
-        return;
-      }
-
       resultDiv.innerHTML = '🔄 Teste...';
-      resultDiv.className = 'test-result loading';
-
       const response = await fetch('https://api.anthropic.com/v1/models', {
         headers: { 'x-api-key': apiKey }
       });
 
       if (response.ok) {
         resultDiv.innerHTML = '✅ Anthropic API Key valid!';
-        resultDiv.className = 'test-result success';
       } else if (response.status === 401) {
         resultDiv.innerHTML = '❌ API Key ungültig (401)';
-        resultDiv.className = 'test-result error';
       } else {
         resultDiv.innerHTML = '❌ Fehler: ' + response.status;
-        resultDiv.className = 'test-result error';
       }
     } catch (err) {
-      const resultDiv = document.getElementById('test_anthropic_api_key');
-      if (resultDiv) {
-        resultDiv.innerHTML = '❌ ' + err.message;
-        resultDiv.className = 'test-result error';
-      }
-      console.error('Test error:', err);
+      resultDiv.innerHTML = '❌ ' + err.message;
     }
   }
 
@@ -245,61 +203,44 @@ class AppSettings {
       URL.revokeObjectURL(url);
       alert('✅ Settings exportiert:\n' + filename);
     } catch (e) {
-      console.error('Error exporting:', e);
       alert('❌ Export fehlgeschlagen');
     }
   }
 
-  importSettings() {
-    try {
-      const fileInput = document.getElementById('app_settings_file_input');
-      if (fileInput) {
-        fileInput.click();
-      } else {
-        alert('❌ Datei-Dialog nicht verfügbar');
-      }
-    } catch (err) {
-      console.error('Error opening file dialog:', err);
-      alert('❌ Fehler beim Öffnen des Datei-Dialogs');
-    }
-  }
-
   handleFileSelect(event) {
-    try {
-      const file = event.target.files[0];
-      if (!file) return;
+    const file = event.target.files[0];
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const json = e.target.result;
-          const data = JSON.parse(json);
+    console.log('📁 Datei ausgewählt: ' + file.name);
 
-          if (data.app !== this.appName) {
-            alert('❌ Falsche App!\nErwartet: ' + this.appName + '\nErhalten: ' + data.app);
-            return;
-          }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = e.target.result;
+        const data = JSON.parse(json);
 
-          const settings = data.settings || {};
-          Object.keys(settings).forEach(key => {
-            this.setSetting(key, settings[key]);
-          });
-
-          alert('✅ Settings importiert!\n(' + file.name + ')');
-          this.loadAllIntoUI();
-        } catch (err) {
-          console.error('Error parsing JSON:', err);
-          alert('❌ Fehler beim Lesen der Datei:\n' + err.message);
+        if (data.app !== this.appName) {
+          alert('❌ Falsche App!\nErwartet: ' + this.appName + '\nErhalten: ' + data.app);
+          return;
         }
-      };
-      reader.readAsText(file);
 
-      // Reset input für nächsten Import
-      event.target.value = '';
-    } catch (err) {
-      console.error('Error in handleFileSelect:', err);
-      alert('❌ Fehler: ' + err.message);
-    }
+        const settings = data.settings || {};
+        Object.keys(settings).forEach(key => {
+          this.setSetting(key, settings[key]);
+        });
+
+        alert('✅ Settings importiert!\n' + file.name);
+        this.loadAllIntoUI();
+        console.log('✅ Import erfolgreich');
+      } catch (err) {
+        alert('❌ Fehler beim Lesen:\n' + err.message);
+        console.error('Import error:', err);
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset für nächsten Import
+    event.target.value = '';
   }
 
   clearAll() {
@@ -315,4 +256,4 @@ class AppSettings {
   }
 }
 
-console.log('✅ AppSettings v1.2 loaded (Datei-Dialog ready)');
+console.log('✅ AppSettings v1.2 (App v3.0) (2026-08-04) loaded');
