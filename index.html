@@ -376,7 +376,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.7';
+const APP_VERSION = 'v3.8';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -933,12 +933,7 @@ function renderList(){
     const grp=byMonth[k];
     const sum=grp.reduce((s,e)=>s+e.amount,0);
     html += `<div class="month-head"><span class="m">${monthName(k)}</span><span class="s">${CHF(sum)}</span></div>`;
-    // Gruppiere Haus-Einträge nach Geschäft
-      const houseEntries = grp.filter(e => e.src === 'house');
-      const otherEntries = grp.filter(e => e.src !== 'house');
-      
-      // Zuerst andere Einträge (FUEL, MAN)
-      otherEntries.forEach(e => {
+    grp.forEach(e=>{
       const tagClass = e.src==='fuel'?'fuel':e.src==='house'?'house':'man';
       const tagLabel = e.src==='fuel'?'AUTO':e.src==='house'?'HAUS':'MAN';
       const editable = e.src==='man';
@@ -954,29 +949,6 @@ function renderList(){
         <div class="amt">${highlight(CHF(e.amount))}${editable?'':'<div class="locked">↻ Import</div>'}</div>
       </div>`;
     });
-      
-      // Dann Haus-Einträge nach Geschäft gruppiert
-      if(houseEntries.length > 0) {
-        const byStore = {};
-        houseEntries.forEach(e => {
-          const store = e.desc.split(' - ')[0].split('·')[0].trim() || 'Sonstiges';
-          (byStore[store] = byStore[store] || []).push(e);
-        });
-        
-        Object.entries(byStore).forEach(([store, items]) => {
-          const storeSum = items.reduce((s, e) => s + e.amount, 0);
-          html += `<div style="margin-top:8px; padding:8px; background:var(--bg-alt); border-left:3px solid var(--accent); border-radius:4px;">
-            <div style="font-weight:bold; font-size:13px; margin-bottom:4px;">📦 ${esc(store)} (CHF ${CHF(storeSum)})</div>`;
-          items.forEach(e => {
-            const sub = [fmtDate(e.date), e.cat, e.note].filter(Boolean).join(' · ');
-            const estMark = e.est ? '<span style="color:var(--fix);font-family:var(--mono);font-size:11px"> ≈ Schätzwert</span>' : '';
-            html += `<div style="margin-left:12px; padding:4px 0; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
-              <span>${highlight(e.desc)}<br><small style="color:var(--ink-soft)">${highlight(sub)}${estMark}</small></span>
-              <span style="font-weight:bold;">${highlight(CHF(e.amount))}</span>
-            </div>`;
-          });
-          html += `</div>`;
-        });
       }
   });
   body.innerHTML = html;
