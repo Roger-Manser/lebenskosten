@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v3.5</title>
+<title>Lebenskosten v3.6</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,10 +143,10 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.4</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v3.6</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v2.9 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.6 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -377,7 +377,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.5';
+const APP_VERSION = 'v3.6';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -430,6 +430,43 @@ function groupImpByStoreAndDate() {
   
   return grouped;
 }
+
+
+function renderGroupedImport() {
+  /**
+   * Renderiert importierte Einkäufe GRUPPIERT nach Geschäft + Datum
+   * Ersetzt einzelne IMP-Einträge mit gruppierten Einträgen
+   */
+  if(!IMP || IMP.length === 0) return;
+  
+  const grouped = groupImpByStoreAndDate();
+  const newIMP = [];
+  
+  // Gehe durch Gruppen (sortiert)
+  Object.entries(grouped)
+    .sort((a, b) => b[0].localeCompare(a[0])) // Neueste zuerst
+    .forEach(([key, group]) => {
+      // Erstelle einen "Meta-Eintrag" für die Gruppe
+      const groupEntry = {
+        id: 'GROUP_' + key,
+        src: 'grouped',
+        date: group.date,
+        desc: `📦 ${group.store}`,  // Geschäft als Beschreibung
+        amount: group.total,
+        cat: 'import',
+        fix: false,
+        note: group.positions.length + ' Positionen',
+        positions: group.positions  // Speichere einzelne Positionen
+      };
+      newIMP.push(groupEntry);
+    });
+  
+  // Ersetze IMP mit gruppierten Einträgen
+  IMP = newIMP;
+  console.log('✅ IMP gruppiert: ' + newIMP.length + ' Gruppen');
+  persistImp();
+}
+
 
 let period = 'month';   // 'month' | 'year' | 'all'
 let filter = 'all';
@@ -691,6 +728,7 @@ async function importAll(){
     }catch(e){ document.getElementById('srcFb').textContent='Fehler'; throw e; }
 
     IMP = fresh;
+    if(typeof renderGroupedImport === 'function') { renderGroupedImport(); }
     persistImp();
     renderAll();
     ghStatus('✓ Import: '+hbCount+' aus Haushaltbuch, '+fbCount+' aus Fahrtenbuch ('+new Date().toLocaleTimeString('de-CH')+')','ok');
