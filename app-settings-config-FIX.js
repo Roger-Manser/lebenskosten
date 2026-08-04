@@ -35,6 +35,7 @@ const APP_SETTINGS = {
     fields: [
       { id: 'github_owner', label: 'GitHub Owner', type: 'text', placeholder: 'roger-manser', order: 1 },
       { id: 'github_repo', label: 'GitHub Repo', type: 'text', placeholder: 'lebenskosten-daten', order: 2 },
+      { id: 'sync_filename', label: 'Dateiname (optional)', type: 'text', placeholder: 'lebenskosten-daten', order: 2.5 },
       { id: 'github_token', label: 'GitHub Token', type: 'password', order: 3 },
       { id: 'anthropic_api_key', label: 'Anthropic API Key', type: 'password', order: 4 }
     ]
