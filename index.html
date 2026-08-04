@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.9</title>
+<title>Lebenskosten v4.10</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,7 +143,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.9</span></h1>
+    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.10</span></h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
   <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
@@ -376,7 +376,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.9';
+const APP_VERSION = 'v4.10';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -501,19 +501,38 @@ async function cloudPull(){
 }
 /* Auto-Laden beim Start: übernimmt GitHub nur, wenn Stand gleich/neuer */
 async function cloudAutoLoad(){
-  if(!syncReady()) return;
+  console.log('cloudAutoLoad called, syncReady():', syncReady());
+  if(!syncReady()) {
+    console.log('cloudAutoLoad: syncReady() is false, returning');
+    return;
+  }
   try{
+    console.log('cloudAutoLoad: fetching file from GitHub...');
     const cur=await cloudGetFile();
-    if(!cur || !Array.isArray(cur.data.MAN)) return;
+    console.log('cloudAutoLoad: cloudGetFile returned:', cur ? 'data' : 'null');
+    if(!cur) {
+      console.log('cloudAutoLoad: cur is null/undefined');
+      return;
+    }
+    if(!Array.isArray(cur.data.MAN)) {
+      console.log('cloudAutoLoad: MAN is not an array:', typeof cur.data.MAN, 'length:', cur.data.MAN?.length);
+      return;
+    }
+    console.log('cloudAutoLoad: MAN array found, length:', cur.data.MAN.length);
     const remoteRev=+cur.data.rev||0, localRev=+REV||0;
+    console.log('cloudAutoLoad: remoteRev:', remoteRev, 'localRev:', localRev);
     if(remoteRev>=localRev){
       MAN=cur.data.MAN; if(Array.isArray(cur.data.CATS)&&cur.data.CATS.length) CATS=cur.data.CATS; REV=remoteRev;
       persist(false); renderAll();
+      console.log('✓ cloudAutoLoad: Daten geladen und angezeigt!');
       syncStatus('✓ Automatisch geladen (Rev '+remoteRev+')', 'ok');
     }else{
+      console.log('cloudAutoLoad: remote Stand älter, nicht überschreiben');
       syncStatus('Lokaler Stand neuer (Rev '+localRev+' vs. '+remoteRev+') – nicht überschrieben. Tippe ↑ Hochladen.', 'warn');
     }
-  }catch(e){ /* offline o.ä. – lokaler Stand zählt */ }
+  }catch(e){ 
+    console.error('cloudAutoLoad error:', e.message, e);
+  }
 }
 let cloudT;
 function cloudAutoSync(){
