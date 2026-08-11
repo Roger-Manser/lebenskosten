@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Lebenskosten v4.20</title>
+<title>Lebenskosten</title>
 <style>
 :root{
   --bg:#F1F4F2; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6B62;
@@ -143,10 +143,10 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
 <header>
   <div class="brand">
-    <h1>Lebenskosten <span style="font-size:13px;color:var(--ink-soft);font-weight:normal">v4.20</span></h1>
+    <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <!-- ENTFERNT: verLabel - Version wird nur in h1 angezeigt -->
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.0 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -250,39 +250,8 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 
     <div class="card">
       <h3 class="sec" style="margin-top:0">Zurücksetzen</h3>
-      <!-- <button class="btn danger" onclick="resetManual()">Alle manuellen Einträge löschen</button> -->
+      <button class="btn danger" onclick="resetManual()">Alle manuellen Einträge löschen</button>
     </div>
-      <div class="card">
-      <h3 class="sec" style="margin-top:0">⚙️ App-Einstellungen</h3>
-      
-      <label>GitHub Owner</label>
-      <input type="text" id="setting_github_owner" placeholder="z.B. roger-manser">
-      
-      <label style="margin-top:12px;">GitHub Repo</label>
-      <input type="text" id="setting_github_repo" placeholder="z.B. lebenskosten-daten">
-      
-      <label style="margin-top:12px;">Dateiname (optional)</label>
-      <input type="text" id="setting_sync_filename" placeholder="z.B. lebenskosten-daten.json oder lebenskosten-daten">
-      
-      <label style="margin-top:12px;">GitHub Token</label>
-      <input type="password" id="setting_github_token" placeholder="ghp_..." autocomplete="new-password">
-      <button class="btn ghost" onclick="if(appSettings)appSettings.testGitHub()" style="margin-top:4px;font-size:13px">🧪 Token testen</button>
-      <div id="test_github_token" style="font-size:12px;padding:4px;margin-top:4px;"></div>
-      
-      <label style="margin-top:12px;">Anthropic API Key</label>
-      <input type="password" id="setting_anthropic_api_key" placeholder="sk-ant-..." autocomplete="new-password">
-      <button class="btn ghost" onclick="if(appSettings)appSettings.testAnthropicKey()" style="margin-top:4px;font-size:13px">🧪 API Key testen</button>
-      <div id="test_anthropic_api_key" style="font-size:12px;padding:4px;margin-top:4px;"></div>
-      
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">
-        <button class="btn primary" onclick="if(appSettings){appSettings.saveAll(); if(typeof setupSyncFile==='function')setupSyncFile();}">💾 Speichern</button>
-        <button class="btn ghost" onclick="if(appSettings)appSettings.exportSettings()">📥 Export</button>
-        <button class="btn ghost" onclick="document.getElementById('app_settings_file_input').click()">📤 Import</button>
-        <button class="btn danger" onclick="if(appSettings)appSettings.clearAll()">🗑️ Löschen</button>
-      </div>
-      <input type="file" id="app_settings_file_input" accept=".json" style="display:none;">
-    </div>
-
   </section>
 </main>
 
@@ -317,6 +286,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <label>Bezeichnung</label>
     <input id="mDesc" placeholder="z.B. Wohnungsmiete, Krankenkasse" oninput="onDescInput()" autocomplete="off">
     <div id="suggestBox"></div>
+    <div id="gpsBox"></div>
 
     <div class="row2">
       <div><label id="amountLabel">Betrag (CHF)</label><input id="mAmount" type="number" inputmode="decimal" step="0.05" placeholder="250.00"></div>
@@ -372,6 +342,34 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
   </div>
 </div>
 
+<div class="overlay" id="impOverlay" onclick="if(event.target===this)closeImpSheet()">
+  <div class="sheet">
+    <h2 id="impSheetTitle">Importierten Eintrag bearbeiten</h2>
+    <div class="sub" style="color:var(--ink-soft);font-size:12px;margin-bottom:12px">Änderungen gelten nur in dieser App – die Quelldaten bleiben unverändert. ↻ Import-Badge bleibt sichtbar.</div>
+    <label>Bezeichnung</label>
+    <input id="impDesc" placeholder="Bezeichnung">
+    <div class="row2">
+      <div><label>Betrag (CHF)</label><input id="impAmount" type="number" inputmode="decimal" step="0.05"></div>
+      <div><label>Datum</label><input id="impDate" type="date" disabled style="opacity:.5"></div>
+    </div>
+    <label>Kategorie</label>
+    <select id="impCat"></select>
+    <label>Art der Kosten</label>
+    <div class="toggle" id="impFlag">
+      <button class="fix" onclick="setImpFlag(true)">Zwingend</button>
+      <button class="var on" onclick="setImpFlag(false)">Optional</button>
+    </div>
+    <label style="margin-top:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="impWohnen" style="width:auto;margin:0">
+      <span style="font-weight:600;color:var(--ink)">Gehört zu Wohnen / Wohnung</span>
+    </label>
+    <button class="btn accent" onclick="saveImpOverride()">Änderungen speichern</button>
+    <button class="btn danger" onclick="hideImpEntry()">Eintrag ausblenden</button>
+    <button class="btn ghost" onclick="resetImpOverride()">Auf Original zurücksetzen</button>
+    <button class="btn ghost" onclick="closeImpSheet()">Abbrechen</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -379,12 +377,13 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v4.20';
+const APP_VERSION = 'v3.0';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
 let GH = { owner:'', token:'', hbRepo:'haushaltbuch', fbRepo:'fahrtenbuch' };
 let SY = { repo:'lebenskosten-daten', token:'', auto:false };   // Cloud-Sync privates Daten-Repo
+let OVERRIDES = {};  // { [importId]: { desc, amount, cat, fix, wohnen, hidden } }
 /* importierte (read-only) Einträge, jeweils neu aus GitHub geholt: */
 let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
 let period = 'month';   // 'month' | 'year' | 'all'
@@ -403,14 +402,14 @@ const monthName = k => new Date(k+'-01T12:00:00').toLocaleDateString('de-CH',{mo
 /* ============ Speicherung ============ */
 function persist(bumpRev){
   if(bumpRev!==false){ REV = (REV||0) + 1; }
-  try{ localStorage.setItem('lebenskosten1', JSON.stringify({MAN,CATS,rev:REV})); }catch(e){}
+  try{ localStorage.setItem('lebenskosten1', JSON.stringify({MAN,CATS,rev:REV,OVERRIDES})); }catch(e){}
   renderVersion();
   if(typeof cloudAutoSync==='function') cloudAutoSync();
 }
 function restore(){
   try{
     const raw = localStorage.getItem('lebenskosten1');
-    if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.MAN)) MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=+d.rev||0; }
+    if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.MAN)) MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=+d.rev||0; if(d.OVERRIDES) OVERRIDES=d.OVERRIDES; }
   }catch(e){}
   try{ const g=localStorage.getItem('lebenskostenGh'); if(g) GH=Object.assign(GH,JSON.parse(g)); }catch(e){}
   try{ const s=localStorage.getItem('lebenskostenSync'); if(s) SY=Object.assign(SY,JSON.parse(s)); }catch(e){}
@@ -428,36 +427,7 @@ function b64Decode(b64){ return decodeURIComponent(escape(atob((b64||'').replace
 function b64Encode(str){ return btoa(unescape(encodeURIComponent(str))); }
 
 /* ============ Cloud-Sync (privates Daten-Repo) ============ */
-let SYNC_FILE = 'lebenskosten.json';  // Default
-
-function setupSyncFile() {
-  console.log('setupSyncFile called');
-  
-  // Versuche zuerst aus Input-Feld zu lesen
-  const inputEl = document.getElementById('setting_sync_filename');
-  let fileName = inputEl ? (inputEl.value || '').trim() : '';
-  
-  if(!fileName) {
-    // Fallback: aus AppSettings
-    fileName = appSettings?.getSetting('sync_filename') || '';
-  }
-  
-  if(!fileName) {
-    // Fallback: aus alten localStorage
-    try {
-      const syncData = JSON.parse(localStorage.getItem('lebenskostenSync') || '{}');
-      fileName = syncData.file || '';
-    } catch(e) {}
-  }
-  
-  if(fileName) {
-    // Wenn User .json vergessen hat, hinzufügen
-    SYNC_FILE = fileName.endsWith('.json') ? fileName : fileName + '.json';
-    console.log('✅ setupSyncFile: SYNC_FILE gesetzt zu:', SYNC_FILE);
-  } else {
-    console.log('setupSyncFile: Keine Eingabe gefunden, nutze Default:', SYNC_FILE);
-  }
-}
+const SYNC_FILE = 'lebenskosten.json';
 function loadSyncConfig(){
   const rEl=document.getElementById('ghDataRepo'), tEl=document.getElementById('ghDataToken'), aEl=document.getElementById('ghDataAuto');
   if(rEl) rEl.value = SY.repo||'lebenskosten-daten';
@@ -533,42 +503,19 @@ async function cloudPull(){
 }
 /* Auto-Laden beim Start: übernimmt GitHub nur, wenn Stand gleich/neuer */
 async function cloudAutoLoad(){
-  console.log('cloudAutoLoad called, syncReady():', syncReady());
-  if(!syncReady()) {
-    console.log('cloudAutoLoad: syncReady() is false, returning');
-    return;
-  }
+  if(!syncReady()) return;
   try{
-    console.log('cloudAutoLoad: fetching file from GitHub...');
     const cur=await cloudGetFile();
-    console.log('cloudAutoLoad: cloudGetFile returned:', cur ? 'data' : 'null');
-    if(!cur) {
-      console.log('cloudAutoLoad: cur is null/undefined');
-      return;
-    }
-    if(!Array.isArray(cur.data.MAN)) {
-      console.log('cloudAutoLoad: MAN is not an array:', typeof cur.data.MAN, 'length:', cur.data.MAN?.length);
-      return;
-    }
-    console.log('cloudAutoLoad: MAN array found, length:', cur.data.MAN.length);
+    if(!cur || !Array.isArray(cur.data.MAN)) return;
     const remoteRev=+cur.data.rev||0, localRev=+REV||0;
-    console.log('cloudAutoLoad: remoteRev:', remoteRev, 'localRev:', localRev);
     if(remoteRev>=localRev){
       MAN=cur.data.MAN; if(Array.isArray(cur.data.CATS)&&cur.data.CATS.length) CATS=cur.data.CATS; REV=remoteRev;
-      persist(false);
-      // WICHTIG: Nach dem Laden von GitHub auch die importierten Daten laden!
-      console.log('cloudAutoLoad: calling importAll() to load Haushaltsbuch + Fahrtenbuch...');
-      await importAll();
-      renderAll();
-      console.log('✓ cloudAutoLoad: Daten geladen und angezeigt!');
+      persist(false); renderAll();
       syncStatus('✓ Automatisch geladen (Rev '+remoteRev+')', 'ok');
     }else{
-      console.log('cloudAutoLoad: remote Stand älter, nicht überschreiben');
       syncStatus('Lokaler Stand neuer (Rev '+localRev+' vs. '+remoteRev+') – nicht überschrieben. Tippe ↑ Hochladen.', 'warn');
     }
-  }catch(e){ 
-    console.error('cloudAutoLoad error:', e.message, e);
-  }
+  }catch(e){ /* offline o.ä. – lokaler Stand zählt */ }
 }
 let cloudT;
 function cloudAutoSync(){
@@ -628,12 +575,6 @@ async function fetchRepoFile(repo, file){
 function mapHaushalt(S){
   const out=[];
   const log = (S && Array.isArray(S.log)) ? S.log : [];
-  const artikelByID = {};
-  // Baue Index der Artikel für schnellen Zugriff auf kaufort
-  if(S && Array.isArray(S.a)){
-    S.a.forEach(a => { artikelByID[a.id] = a; });
-  }
-  
   log.forEach(e=>{
     // Eingang erkennen: 'ein' (deutsch) oder 'in' (alt); Ausgänge ('aus'/'out') ignorieren
     const isEingang = (e.t==='ein' || e.t==='in');
@@ -642,25 +583,10 @@ function mapHaushalt(S){
     const menge = +e.menge||0, preis = +e.preis||0;
     const amount = Math.round(menge*preis*100)/100;
     if(!(amount>0)) return;                  // Einträge ohne Preis (z.B. Bestandskorrektur) nicht als Kosten
-    
-    // Baue desc mit kaufort auf: "Migros - Tomaten"
-    const itemName = e.name || 'Einkauf';
-    
-    // Versuche kaufort zu finden:
-    // 1. Zuerst aus Log-Eintrag
-    // 2. Dann aus Artikel-Level (parent article)
-    // 3. Fallback: leer
-    let kaufort = e.kaufort || '';
-    if(!kaufort && e.aid && artikelByID[e.aid]){
-      kaufort = artikelByID[e.aid].kaufort || '';
-    }
-    
-    const desc = kaufort ? kaufort + ' - ' + itemName : itemName;
-    
     out.push({
       id:'hb_'+(e.zeit||uid()),
       src:'house',
-      desc:desc,
+      desc:e.name||'Einkauf',
       amount,
       date:e.datum||today(),
       cat:'Haushalt / Einkauf'+(e.kat?' · '+e.kat:''),
@@ -702,44 +628,29 @@ function mapFahrten(D){
   return out;
 }
 async function importAll(){
-  console.log("importAll() called");
-  if(!GH.owner){ 
-    console.error("importAll: GH.owner ist leer!");
-    // Versuche aus AppSettings zu laden
-    if(window.appSettings) {
-      const owner = appSettings.getSetting('github_owner');
-      if(owner) {
-        GH.owner = owner;
-        console.log("importAll: Owner aus AppSettings gesetzt:", owner);
-      }
-    }
-    if(!GH.owner) {
-      ghStatus('Bitte zuerst den GitHub-Benutzer (Owner) eingeben.','warn'); 
-      return; 
-    }
-  }
+  if(!GH.owner){ ghStatus('Bitte zuerst den GitHub-Benutzer (Owner) eingeben.','warn'); return; }
   ghStatus('Importiere…');
   let hbCount=0, fbCount=0, fresh=[];
   try{
     // Haushaltbuch
     try{
-      console.log("importAll: fetching HB"); const hb = await fetchRepoFile(GH.hbRepo, 'haushaltbuch.json'); console.log('importAll HB:', hb ? 'ok' : 'null');
-      console.log("importAll HB result:", hb ? "data" : "null"); if(hb.missing){ document.getElementById('srcHb').textContent='Datei fehlt'; }
-      else { console.log("importAll: Haushaltsbuch mapHaushalt count"); const m=mapHaushalt(hb.data); console.log("importAll HB mapped:", m.length); fresh=fresh.concat(m); hbCount=m.length; document.getElementById('srcHb').textContent=hbCount+' Eingänge'; }
-    }catch(e){ console.error("importAll HB error:", e.message); document.getElementById('srcHb').textContent='Fehler: '+e.message; throw e; }
+      const hb = await fetchRepoFile(GH.hbRepo, 'haushaltbuch.json');
+      if(hb.missing){ document.getElementById('srcHb').textContent='Datei fehlt'; }
+      else { const m=mapHaushalt(hb.data); fresh=fresh.concat(m); hbCount=m.length; document.getElementById('srcHb').textContent=hbCount+' Eingänge'; }
+    }catch(e){ document.getElementById('srcHb').textContent='Fehler'; throw e; }
     // Fahrtenbuch
     try{
-      console.log("importAll: fetching FB"); const fb = await fetchRepoFile(GH.fbRepo, 'fahrtenbuch.json'); console.log('importAll FB:', fb ? 'ok' : 'null');
-      console.log("importAll FB result:", fb ? "data" : "null"); if(fb.missing){ document.getElementById('srcFb').textContent='Datei fehlt'; }
-      else { console.log("importAll: Fahrtenbuch mapFahrten count"); const m=mapFahrten(fb.data); console.log("importAll FB mapped:", m.length); fresh=fresh.concat(m); fbCount=m.length; document.getElementById('srcFb').textContent=fbCount+' Einträge'; }
+      const fb = await fetchRepoFile(GH.fbRepo, 'fahrtenbuch.json');
+      if(fb.missing){ document.getElementById('srcFb').textContent='Datei fehlt'; }
+      else { const m=mapFahrten(fb.data); fresh=fresh.concat(m); fbCount=m.length; document.getElementById('srcFb').textContent=fbCount+' Einträge'; }
     }catch(e){ document.getElementById('srcFb').textContent='Fehler'; throw e; }
 
-    console.log("importAll: Total fresh:", fresh.length); console.log('importAll TOTAL fresh:', fresh.length); IMP = fresh;
+    IMP = fresh;
     persistImp();
     renderAll();
     ghStatus('✓ Import: '+hbCount+' aus Haushaltbuch, '+fbCount+' aus Fahrtenbuch ('+new Date().toLocaleTimeString('de-CH')+')','ok');
     toast('Import abgeschlossen');
-  }catch(e){ console.error("importAll error:", e.message);
+  }catch(e){
     ghStatus('✗ '+e.message,'err');
     toast('Import fehlgeschlagen');
   }
@@ -794,7 +705,15 @@ function openVariables(){
   });
   return open;
 }
-function allEntries(){ return IMP.concat(manExpanded()); }
+function allEntries(){
+  const imported = IMP
+    .filter(e=> !(OVERRIDES[e.id] && OVERRIDES[e.id].hidden))
+    .map(e=>{
+      const ov = OVERRIDES[e.id];
+      return ov ? {...e, ...ov, hidden:undefined} : e;
+    });
+  return imported.concat(manExpanded());
+}
 function inPeriod(d){
   if(!d) return false;
   if(period==='all') return true;
@@ -908,49 +827,23 @@ function renderList(){
     const grp=byMonth[k];
     const sum=grp.reduce((s,e)=>s+e.amount,0);
     html += `<div class="month-head"><span class="m">${monthName(k)}</span><span class="s">${CHF(sum)}</span></div>`;
-    // Gruppiere nach Kategorie
-    const byCat = {};
-    grp.forEach(e => {
-      const cat = e.cat || 'Sonstiges';
-      if(!byCat[cat]) {
-        byCat[cat] = {
-          items: [],
-          total: 0,
-          src: null
-        };
-      }
-      byCat[cat].items.push(e);
-      byCat[cat].total += e.amount;
-      byCat[cat].src = e.src;
-    });
-    
-    // Render gruppiert - neue Struktur
-    Object.entries(byCat).forEach(([cat, data]) => {
-      const tagClass = data.src==='fuel'?'fuel':data.src==='house'?'house':'man';
-      const tagLabel = data.src==='fuel'?'AUTO':data.src==='house'?'HAUS':'MAN';
-      
-      // cat kann sein: "Haushalt / Einkauf · Gemüse & Früchte"
-      // Nimm nur den Teil VOR dem "·"
-      const catBase = cat.split('·')[0].trim();  // "Haushalt / Einkauf"
-      const catParts = catBase.split(' / ');
-      const mainCat = catParts.length > 1 ? catParts[1] : catBase;  // "Einkauf"
-      
-      // Nutze erste Position
-      const firstItem = data.items[0];
-      
-      // Extrahiere Geschäft aus description (format: "Migros - Tomaten")
-      let store = 'Sonstiges';
-      if (firstItem?.desc && firstItem.desc.includes(' - ')) {
-        store = firstItem.desc.split(' - ')[0].trim();
-      }
-      
-      html += `<div class="entry" style="cursor:default;">
+    grp.forEach(e=>{
+      const tagClass = e.src==='fuel'?'fuel':e.src==='house'?'house':'man';
+      const tagLabel = e.src==='fuel'?'AUTO':e.src==='house'?'HAUS':'MAN';
+      const editable = e.src==='man';
+      const sub = [fmtDate(e.date), e.cat, e.note].filter(Boolean).join(' · ');
+      const estMark = e.est ? '<span style="color:var(--fix);font-family:var(--mono);font-size:11px"> ≈ Schätzwert</span>' : '';
+      const isImp = e.src==='fuel' || e.src==='house';
+      const isMan = e.src==='man';
+      const hasOv = isImp && OVERRIDES[e.id];
+      const clickAttr = isMan ? `onclick="openSheet('${e.baseId}')"` : `onclick="openImpSheet('${e.id}')"`;
+      html += `<div class="entry" ${clickAttr}>
         <span class="tag ${tagClass}">${tagLabel}</span>
         <div class="mid">
-          <div class="t1">${highlight(mainCat)}</div>
-          <div class="t2">${highlight(fmtDate(firstItem?.date))} · ${highlight(store)}</div>
+          <div class="t1">${e.fix?'<span class="fixdot" title="Zwingend"></span>':''}${highlight(e.desc)}${hasOv?'<span style="font-size:9px;color:var(--fuel);margin-left:4px">✎</span>':''}</div>
+          <div class="t2">${highlight(sub)}${estMark}</div>
         </div>
-        <div class="amt">${highlight(CHF(data.total))}<div class="locked">↻ Import</div></div>
+        <div class="amt">${highlight(CHF(e.amount))}<div class="locked">↻ Import</div></div>
       </div>`;
     });
   });
@@ -1131,10 +1024,60 @@ function openSheet(id){
   }
   onRepeatChange();
   document.getElementById('suggestBox').innerHTML='';
+  document.getElementById('gpsBox').innerHTML='';
   document.getElementById('overlay').classList.add('open');
+  if(!editId) fetchGpsHint();
 }
 
-/* ===== Ähnliche Einträge vorschlagen ===== */
+/* ===== Import-Override Sheet ===== */
+let curImpId=null, curImpFlag=false;
+function fillImpCatSelect(sel){
+  const s=document.getElementById('impCat');
+  s.innerHTML=CATS.map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join('')
+    +`<option value="__new">+ Neue Kategorie…</option>`;
+}
+function setImpFlag(fix){ curImpFlag=fix; document.querySelectorAll('#impFlag button').forEach(b=>b.classList.toggle('on', b.classList.contains(fix?'fix':'var'))); }
+function openImpSheet(id){
+  const e=IMP.find(x=>x.id===id); if(!e) return;
+  curImpId=id;
+  const ov=OVERRIDES[id]||{};
+  document.getElementById('impDesc').value=ov.desc??e.desc??'';
+  document.getElementById('impAmount').value=(ov.amount??e.amount??0).toFixed ? (+( ov.amount??e.amount)).toFixed(2) : '';
+  document.getElementById('impDate').value=e.date||'';
+  document.getElementById('impWohnen').checked=!!(ov.wohnen??e.wohnen);
+  const cat=ov.cat??e.cat??CATS[0];
+  if(!CATS.includes(cat)) CATS.push(cat);
+  fillImpCatSelect(cat);
+  setImpFlag(!!(ov.fix??e.fix));
+  const hasOv=!!OVERRIDES[id];
+  document.getElementById('impSheetTitle').textContent=hasOv?'Importierten Eintrag bearbeiten':'Importierten Eintrag anpassen';
+  document.getElementById('impOverlay').classList.add('open');
+}
+function closeImpSheet(){ document.getElementById('impOverlay').classList.remove('open'); curImpId=null; }
+function saveImpOverride(){
+  if(!curImpId) return;
+  const desc=document.getElementById('impDesc').value.trim();
+  const amount=parseFloat(document.getElementById('impAmount').value);
+  let cat=document.getElementById('impCat').value;
+  if(cat==='__new'){
+    const nn=prompt('Name der neuen Kategorie:'); if(!nn) return;
+    if(!CATS.includes(nn)) CATS.push(nn); cat=nn;
+  }
+  OVERRIDES[curImpId]={ desc, amount:isFinite(amount)?amount:undefined, cat, fix:curImpFlag, wohnen:document.getElementById('impWohnen').checked };
+  persist(); renderAll(); closeImpSheet(); toast('Eintrag angepasst');
+}
+function hideImpEntry(){
+  if(!curImpId) return;
+  if(!confirm('Diesen Eintrag in der Lebenskosten-App ausblenden? Er bleibt in der Quelldatei erhalten.')) return;
+  OVERRIDES[curImpId]={ hidden:true };
+  persist(); renderAll(); closeImpSheet(); toast('Eintrag ausgeblendet');
+}
+function resetImpOverride(){
+  if(!curImpId) return;
+  if(!OVERRIDES[curImpId]){ toast('Kein Override vorhanden'); return; }
+  delete OVERRIDES[curImpId];
+  persist(); renderAll(); closeImpSheet(); toast('Auf Original zurückgesetzt');
+}
 function normStr(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,''); }
 function similarity(a,b){
   a=normStr(a); b=normStr(b);
@@ -1145,6 +1088,41 @@ function similarity(a,b){
   let p=0; while(p<a.length && p<b.length && a[p]===b[p]) p++;
   return p / Math.max(a.length,b.length);
 }
+/* ===== GPS-Standort-Vorschlag ===== */
+function fetchGpsHint(){
+  const box=document.getElementById('gpsBox');
+  if(!box || editId) return;
+  if(!navigator.geolocation){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="sugghint" style="color:var(--ink-soft)">📍 Standort wird ermittelt…</div>';
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    try{
+      const {latitude:lat, longitude:lon}=pos.coords;
+      const url=`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=18&addressdetails=1`;
+      const r=await fetch(url, { headers:{ 'Accept-Language':'de', 'User-Agent':'LebenskostenApp/1.0' }});
+      if(!r.ok) throw new Error('Nominatim '+r.status);
+      const d=await r.json();
+      const a=d.address||{};
+      const name=a.name||a.shop||a.amenity||a.building||a.office||'';
+      const street=a.road||a.pedestrian||'';
+      const city=a.city||a.town||a.village||a.suburb||'';
+      const label=[name,street,city].filter(Boolean).join(', ');
+      if(!label){ box.innerHTML=''; return; }
+      box.innerHTML=`<div class="sugghint">📍 Du bist in der Nähe von:</div>
+        <div class="sugg" onclick="applyGps('${esc(label).replace(/'/g,'&#39;')}')">
+          <span class="stag" style="background:#E8F4E8;color:#2D6A2D">GPS</span>
+          <div class="smid"><div class="st1">${esc(label)}</div><div class="st2">${lat.toFixed(4)}, ${lon.toFixed(4)}</div></div>
+        </div>`;
+    }catch(e){ box.innerHTML=''; }
+  }, ()=>{ box.innerHTML=''; }, { timeout:8000, maximumAge:60000 });
+}
+function applyGps(label){
+  const desc=document.getElementById('mDesc');
+  if(!desc.value) desc.value=label;
+  document.getElementById('gpsBox').innerHTML='';
+  onDescInput();
+  toast('Standort übernommen');
+}
+
 let suggestList=[];
 function onDescInput(){
   const box=document.getElementById('suggestBox');
@@ -1354,7 +1332,7 @@ async function startQR(){
   }catch(e){ qrHint('✗ '+e.message); return; }
   try{
     qrStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
-  }catch(e){ console.error("importAll error:", e.message);
+  }catch(e){
     qrHint('✗ Kein Kamerazugriff. Erlaube die Kamera in den Browser-Einstellungen.'); return;
   }
   const video=document.getElementById('qrVideo');
@@ -1562,7 +1540,7 @@ async function processReceipt(ev){
     receiptHint('✓ Erkannt – bitte prüfen:');
     showReceiptResult();
 
-  }catch(e){ console.error("importAll error:", e.message);
+  }catch(e){
     receiptHint('✗ '+e.message);
   }
 }
@@ -1639,123 +1617,6 @@ function applyUpdate(){
   else { window.location.reload(); }
 }
 
-</script>
-<script src="app-settings-config-FIX.js"></script>
-<script>
-var appSettings = null;
-
-function setupAppSettings() {
-  try {
-    appSettings = new AppSettings('Lebenskosten');
-    appSettings.loadAllIntoUI();
-    
-    // Setup SYNC_FILE (Dateiname) BEVOR GitHub-Einstellungen gesetzt werden
-    if(typeof setupSyncFile === 'function') {
-      setupSyncFile();
-    }
-    
-    console.log('=== DEBUG setupAppSettings ===');
-    console.log('AppSettings owner:', appSettings.getSetting('github_owner'));
-    console.log('AppSettings token:', appSettings.getSetting('github_token'));
-    console.log('AppSettings repo:', appSettings.getSetting('github_repo'));
-    console.log('AppSettings sync_filename:', appSettings.getSetting('sync_filename'));
-    console.log('Alte localStorage keys:');
-    console.log('  lebenskostenGh:', localStorage.getItem('lebenskostenGh'));
-    console.log('  lebenskostenSync:', localStorage.getItem('lebenskostenSync'));
-    console.log('  lk_github_token:', localStorage.getItem('lk_github_token'));
-    console.log('  lk_token:', localStorage.getItem('lk_token'));
-    
-    // Warte kurz damit GH und SY definiert sind
-    setTimeout(() => {
-      if(!window.GH) {
-        console.warn('⚠️ GH noch nicht definiert nach setupAppSettings');
-        return;
-      }
-      
-      let owner = appSettings.getSetting('github_owner') || '';
-      let token = appSettings.getSetting('github_token') || '';
-      let repo = appSettings.getSetting('github_repo') || 'lebenskosten-daten';
-      
-      // Fallback auf alte localStorage-Keys wenn AppSettings leer
-      if(!owner) {
-        owner = localStorage.getItem('lebenskostenGh') || '';
-        if(owner) console.log('✅ Fallback: Owner aus alten localStorage geladen:', owner);
-      }
-      if(!token) {
-        token = localStorage.getItem('lk_github_token') || localStorage.getItem('lk_token') || '';
-        if(token) console.log('✅ Fallback: Token aus alten localStorage geladen');
-      }
-      // repo wahrscheinlich in lebenskostenSync JSON?
-      if(!repo || repo === 'lebenskosten-daten') {
-        try {
-          const sync = JSON.parse(localStorage.getItem('lebenskostenSync') || '{}');
-          if(sync.repo) {
-            repo = sync.repo;
-            console.log('✅ Fallback: Repo aus alten localStorage geladen:', repo);
-          }
-        } catch(e) {}
-      }
-      
-      console.log('Final GH.owner:', owner);
-      console.log('Final GH.token:', token ? 'vorhanden' : 'LEER!');
-      console.log('Final SY.repo:', repo);
-      console.log('Final SYNC_FILE:', SYNC_FILE);
-      
-      GH.owner = owner;
-      GH.token = token;
-      if(window.SY) {
-        SY.repo = repo;
-        SY.token = token;
-        console.log('SY gesetzt - syncReady():', !!(GH.owner && SY.repo && SY.token));
-      }
-    }, 100);
-  } catch(e) {
-    console.error('setupAppSettings error:', e);
-  }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  try {
-    setupAppSettings();
-    if(typeof autoSyncInit === 'function') {
-      autoSyncInit();
-    }
-  } catch(e) {
-    console.error('Init error:', e);
-  }
-});
-
-let autoSyncInterval = null;
-const AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000;
-
-function autoSyncInit() {
-  // Warte bis GH und SY definiert sind
-  let attempts = 0;
-  const waitForGH = setInterval(() => {
-    attempts++;
-    if(window.GH && window.SY) {
-      clearInterval(waitForGH);
-      console.log('✅ GH und SY definiert, starte autoSync');
-      console.log('autoSyncInit called, syncReady():', !!(GH.owner && SY.repo && SY.token));
-      if(typeof cloudAutoLoad === 'function') {
-        cloudAutoLoad().catch(e => console.error('Auto-Load error:', e));
-      }
-      if(autoSyncInterval) clearInterval(autoSyncInterval);
-      autoSyncInterval = setInterval(() => {
-        if(typeof cloudAutoLoad === 'function') {
-          cloudAutoLoad().catch(e => console.error('Auto-Load interval error:', e));
-        }
-      }, AUTO_SYNC_INTERVAL_MS);
-    } else if(attempts > 50) {
-      clearInterval(waitForGH);
-      console.warn('⚠️ GH/SY nicht definiert nach 5 Sekunden, überspringe autoSync');
-    }
-  }, 100);
-}
-
-window.addEventListener('beforeunload', () => {
-  if(autoSyncInterval) clearInterval(autoSyncInterval);
-});
 </script>
 </body>
 </html>
