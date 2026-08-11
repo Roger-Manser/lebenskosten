@@ -146,7 +146,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.0 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.2 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -377,7 +377,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.0';
+const APP_VERSION = 'v3.2';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -843,7 +843,7 @@ function renderList(){
           <div class="t1">${e.fix?'<span class="fixdot" title="Zwingend"></span>':''}${highlight(e.desc)}${hasOv?'<span style="font-size:9px;color:var(--fuel);margin-left:4px">✎</span>':''}</div>
           <div class="t2">${highlight(sub)}${estMark}</div>
         </div>
-        <div class="amt">${highlight(CHF(e.amount))}<div class="locked">↻ Import</div></div>
+        <div class="amt">${highlight(CHF(e.amount))}${isImp?'<div class="locked">↻ Import</div>':''}</div>
       </div>`;
     });
   });
