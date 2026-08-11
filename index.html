@@ -146,7 +146,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.3 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.4 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -363,6 +363,8 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <input type="checkbox" id="impWohnen" style="width:auto;margin:0">
       <span style="font-weight:600;color:var(--ink)">Gehört zu Wohnen / Wohnung</span>
     </label>
+    <label style="margin-top:12px">Notiz / Artikel</label>
+    <textarea id="impNote" rows="3" style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#fff;color:var(--ink)" placeholder="Eingekaufte Artikel, Bemerkungen…"></textarea>
     <button class="btn accent" onclick="saveImpOverride()">Änderungen speichern</button>
     <button class="btn danger" onclick="hideImpEntry()">Eintrag ausblenden</button>
     <button class="btn ghost" onclick="resetImpOverride()">Auf Original zurücksetzen</button>
@@ -377,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.3';
+const APP_VERSION = 'v3.4';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1078,6 +1080,7 @@ function openImpSheet(id){
   document.getElementById('impAmount').value=(ov.amount??e.amount??0).toFixed ? (+( ov.amount??e.amount)).toFixed(2) : '';
   document.getElementById('impDate').value=e.date||'';
   document.getElementById('impWohnen').checked=!!(ov.wohnen??e.wohnen);
+  document.getElementById('impNote').value=ov.note??e.note??'';
   const cat=ov.cat??e.cat??CATS[0];
   if(!CATS.includes(cat)) CATS.push(cat);
   fillImpCatSelect(cat);
@@ -1096,7 +1099,8 @@ function saveImpOverride(){
     const nn=prompt('Name der neuen Kategorie:'); if(!nn) return;
     if(!CATS.includes(nn)) CATS.push(nn); cat=nn;
   }
-  OVERRIDES[curImpId]={ desc, amount:isFinite(amount)?amount:undefined, cat, fix:curImpFlag, wohnen:document.getElementById('impWohnen').checked };
+  const note=document.getElementById('impNote').value.trim();
+  OVERRIDES[curImpId]={ desc, amount:isFinite(amount)?amount:undefined, cat, fix:curImpFlag, wohnen:document.getElementById('impWohnen').checked, note };
   persist(); renderAll(); closeImpSheet(); toast('Eintrag angepasst');
 }
 function hideImpEntry(){
