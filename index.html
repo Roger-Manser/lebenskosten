@@ -146,7 +146,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.2 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.3 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -377,7 +377,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.2';
+const APP_VERSION = 'v3.3';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -571,29 +571,62 @@ async function fetchRepoFile(repo, file){
   const j = await r.json();
   return { data: JSON.parse(b64Decode(j.content)) };
 }
-/* Haushaltbuch: alle Eingänge (t==='ein', auch 'in'), Betrag = menge*preis */
+/* Haushaltbuch: Eingänge gruppiert nach Datum + Einkaufsort → 1 Zeile pro Einkauf */
 function mapHaushalt(S){
   const out=[];
   const log = (S && Array.isArray(S.log)) ? S.log : [];
+
+  // Artikel-Tabelle als Lookup aufbauen (id → artikel)
+  const artikelMap = {};
+  if(S && Array.isArray(S.artikel)){
+    S.artikel.forEach(a=>{ if(a.id) artikelMap[a.id]=a; });
+  }
+
+  // Kaufort pro Log-Eintrag ermitteln
+  function getKaufort(e){
+    const art = artikelMap[e.aid]||{};
+    // 1. preisHistorie mit passendem Datum und kaufort (genaueste Quelle)
+    for(const ph of art.preisHistorie||[]){
+      if(ph.datum===e.datum && ph.kaufort) return ph.kaufort;
+    }
+    // 2. Fallback: letzter bekannter Kaufort am Artikel
+    return art.kaufort||'';
+  }
+
+  // Einträge filtern und nach Datum+Ort gruppieren
+  const groups = {};
   log.forEach(e=>{
-    // Eingang erkennen: 'ein' (deutsch) oder 'in' (alt); Ausgänge ('aus'/'out') ignorieren
     const isEingang = (e.t==='ein' || e.t==='in');
-    if(!isEingang) return;
-    if(e.geloescht) return;                 // gelöschte Log-Einträge überspringen
-    const menge = +e.menge||0, preis = +e.preis||0;
-    const amount = Math.round(menge*preis*100)/100;
-    if(!(amount>0)) return;                  // Einträge ohne Preis (z.B. Bestandskorrektur) nicht als Kosten
+    if(!isEingang || e.geloescht) return;
+    const menge=+e.menge||0, preis=+e.preis||0;
+    const amount=Math.round(menge*preis*100)/100;
+    if(!(amount>0)) return;
+    const datum = e.datum||today();
+    const ort = getKaufort(e)||'Ort unbekannt';
+    const key = datum+'|'+ort;
+    if(!groups[key]) groups[key]={ datum, ort, amount:0, items:[], zeit:e.zeit||0 };
+    groups[key].amount = Math.round((groups[key].amount+amount)*100)/100;
+    groups[key].items.push(e.name||'Artikel');
+    if((e.zeit||0) < groups[key].zeit || !groups[key].zeit) groups[key].zeit=e.zeit||0;
+  });
+
+  // Pro Gruppe einen Eintrag erzeugen
+  Object.values(groups).forEach(g=>{
+    const uniqueItems=[...new Set(g.items)];
     out.push({
-      id:'hb_'+(e.zeit||uid()),
-      src:'house',
-      desc:e.name||'Einkauf',
-      amount,
-      date:e.datum||today(),
-      cat:'Haushalt / Einkauf'+(e.kat?' · '+e.kat:''),
-      fix:false,
-      note:(menge!==1?menge+(e.einheit?' '+e.einheit:'')+' à '+CHF(preis):'')
+      id: 'hb_'+g.datum.replace(/-/g,'')+'_'+(g.ort==='Ort unbekannt'?'unbekannt':g.ort.toLowerCase().replace(/\s+/g,'_')),
+      src: 'house',
+      desc: 'Einkauf '+g.ort,
+      amount: g.amount,
+      date: g.datum,
+      cat: 'Haushalt / Einkauf',
+      fix: false,
+      note: uniqueItems.slice(0,5).join(', ')+(uniqueItems.length>5?' +'+( uniqueItems.length-5)+' weitere':'')
     });
   });
+
+  // Nach Datum sortieren
+  out.sort((a,b)=>a.date.localeCompare(b.date));
   return out;
 }
 /* Fahrtenbuch: jeder Tankstopp + jede Einzelkosten + monatliche Buchungen, einzeln */
