@@ -146,7 +146,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.4 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.5 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.4';
+const APP_VERSION = 'v3.5';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -587,12 +587,13 @@ function mapHaushalt(S){
   // Kaufort pro Log-Eintrag ermitteln
   function getKaufort(e){
     const art = artikelMap[e.aid]||{};
-    // 1. preisHistorie mit passendem Datum und kaufort (genaueste Quelle)
+    // art.kaufort ist der zuletzt manuell eingetragene Kaufort – zuverlässigste Quelle
+    if(art.kaufort) return art.kaufort;
+    // Fallback: preisHistorie durchsuchen (irgendeinen Kaufort nehmen, Datum egal)
     for(const ph of art.preisHistorie||[]){
-      if(ph.datum===e.datum && ph.kaufort) return ph.kaufort;
+      if(ph.kaufort) return ph.kaufort;
     }
-    // 2. Fallback: letzter bekannter Kaufort am Artikel
-    return art.kaufort||'';
+    return '';
   }
 
   // Einträge filtern und nach Datum+Ort gruppieren
