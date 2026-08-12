@@ -146,7 +146,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.5 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.6 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.5';
+const APP_VERSION = 'v3.6';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -609,13 +609,24 @@ function mapHaushalt(S){
     const key = datum+'|'+ort;
     if(!groups[key]) groups[key]={ datum, ort, amount:0, items:[], zeit:e.zeit||0 };
     groups[key].amount = Math.round((groups[key].amount+amount)*100)/100;
-    groups[key].items.push(e.name||'Artikel');
+    groups[key].items.push({ name:e.name||'Artikel', menge:menge, preis:preis, total:amount });
     if((e.zeit||0) < groups[key].zeit || !groups[key].zeit) groups[key].zeit=e.zeit||0;
   });
 
   // Pro Gruppe einen Eintrag erzeugen
   Object.values(groups).forEach(g=>{
-    const uniqueItems=[...new Set(g.items)];
+    // Artikel zusammenfassen: gleiche Namen addieren
+    const itemMap={};
+    g.items.forEach(it=>{
+      const k=it.name;
+      if(!itemMap[k]) itemMap[k]={ menge:0, total:0 };
+      itemMap[k].menge += it.menge;
+      itemMap[k].total = Math.round((itemMap[k].total + it.total)*100)/100;
+    });
+    // Notiz: • Anzahlx Name - CHF Total, eine Zeile pro Artikel
+    const note = Object.entries(itemMap)
+      .map(([name,v])=>`• ${v.menge}x ${name} - CHF ${v.total.toFixed(2)}`)
+      .join('\n');
     out.push({
       id: 'hb_'+g.datum.replace(/-/g,'')+'_'+(g.ort==='Ort unbekannt'?'unbekannt':g.ort.toLowerCase().replace(/\s+/g,'_')),
       src: 'house',
@@ -624,7 +635,7 @@ function mapHaushalt(S){
       date: g.datum,
       cat: 'Haushalt / Einkauf',
       fix: false,
-      note: uniqueItems.slice(0,5).join(', ')+(uniqueItems.length>5?' +'+( uniqueItems.length-5)+' weitere':'')
+      note
     });
   });
 
@@ -867,7 +878,8 @@ function renderList(){
       const tagClass = e.src==='fuel'?'fuel':e.src==='house'?'house':'man';
       const tagLabel = e.src==='fuel'?'AUTO':e.src==='house'?'HAUS':'MAN';
       const editable = e.src==='man';
-      const sub = [fmtDate(e.date), e.cat, e.note].filter(Boolean).join(' · ');
+      const notePreview = (e.note||'').split('\n')[0];
+      const sub = [fmtDate(e.date), e.cat, notePreview].filter(Boolean).join(' · ');
       const estMark = e.est ? '<span style="color:var(--fix);font-family:var(--mono);font-size:11px"> ≈ Schätzwert</span>' : '';
       const isImp = e.src==='fuel' || e.src==='house';
       const isMan = e.src==='man';
