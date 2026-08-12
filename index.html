@@ -146,7 +146,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.6 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.7 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -379,7 +379,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.6';
+const APP_VERSION = 'v3.7';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1627,6 +1627,40 @@ function applyReceipt(){
   onDescInput();
   toast('Übernommen – bitte Kategorie und Typ prüfen');
 }
+
+/* ============ Zurück-Button (Android PWA) ============ */
+function anySheetOpen(){
+  return document.getElementById('overlay').classList.contains('open') ||
+         document.getElementById('impOverlay').classList.contains('open');
+}
+function closeAnySheet(){
+  if(document.getElementById('impOverlay').classList.contains('open')){ closeImpSheet(); return true; }
+  if(document.getElementById('overlay').classList.contains('open')){ closeSheet(); return true; }
+  return false;
+}
+// Beim Laden einen State pushen, damit Zurück nicht sofort die App schliesst
+window.addEventListener('load', ()=>{
+  history.pushState({ page:'app' }, '');
+});
+// popstate = Zurück-Button wurde gedrückt
+window.addEventListener('popstate', e=>{
+  if(anySheetOpen()){
+    closeAnySheet();
+  }
+  // Immer neuen State pushen, damit Zurück nie die App schliesst
+  history.pushState({ page:'app' }, '');
+});
+// Beim Öffnen eines Sheets extra State pushen (für Sheet-Schliessen via Zurück)
+const _origOpenSheet = openSheet;
+window.openSheet = function(id){
+  _origOpenSheet(id);
+  history.pushState({ page:'sheet' }, '');
+};
+const _origOpenImpSheet = openImpSheet;
+window.openImpSheet = function(id){
+  _origOpenImpSheet(id);
+  history.pushState({ page:'impSheet' }, '');
+};
 
 /* ============ PWA Service Worker + Update-Erkennung ============ */
 let swReg=null, refreshing=false;
