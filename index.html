@@ -122,6 +122,19 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 .remind input{width:90px;padding:8px;font-size:15px;border:1px solid #D9C97F;border-radius:7px;text-align:right;font-family:var(--mono)}
 .remind .rsave{flex:none;background:var(--fix);color:#fff;border:none;border-radius:7px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer}
 #updateBanner{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:30;display:flex;align-items:center;gap:14px;background:var(--ink);color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:92%;font-size:14px;font-weight:600}
+.beleg-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.beleg-thumb{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--bg);cursor:pointer;flex:none}
+.beleg-thumb img{width:100%;height:100%;object-fit:cover}
+.beleg-thumb .beleg-icon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-size:22px;gap:2px}
+.beleg-thumb .beleg-icon span{font-size:9px;color:var(--ink-soft);text-align:center;padding:0 2px;word-break:break-all}
+.beleg-thumb .beleg-del{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;line-height:18px;text-align:center;cursor:pointer;display:none}
+.beleg-thumb:hover .beleg-del{display:block}
+.beleg-add{width:72px;height:72px;border-radius:8px;border:2px dashed var(--line);background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:22px;color:var(--ink-soft);cursor:pointer;gap:2px;flex:none}
+.beleg-add span{font-size:10px;color:var(--ink-soft)}
+.beleg-uploading{opacity:.5;pointer-events:none}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:50;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.lightbox img{max-width:96vw;max-height:90vh;border-radius:8px;object-fit:contain}
+.lightbox iframe{width:92vw;height:88vh;border:none;border-radius:8px}
 #suggestBox{margin-top:4px}
 .sugg{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--accent-soft);border:1px solid #C5E0D4;border-radius:8px;margin-top:6px;cursor:pointer}
 .sugg:active{background:#D3E9DE}
@@ -146,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.7 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -336,6 +349,11 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <label>Notiz</label>
     <input id="mNote" placeholder="optional">
 
+    <label style="margin-top:12px">Belege / Dateien</label>
+    <div class="beleg-list" id="mBelegList"></div>
+    <input type="file" id="mBelegInput" multiple hidden onchange="onBelegAdd(event,'man')">
+    <div class="hint" id="mBelegStatus" style="margin-top:4px"></div>
+
     <button class="btn accent" id="saveBtn" onclick="saveEntry()">Eintrag hinzufügen</button>
     <button class="btn danger" id="deleteBtn" onclick="deleteEntry()" hidden>Eintrag löschen</button>
     <button class="btn ghost" onclick="closeSheet()">Abbrechen</button>
@@ -365,6 +383,11 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     </label>
     <label style="margin-top:12px">Notiz / Artikel</label>
     <textarea id="impNote" rows="3" style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#fff;color:var(--ink)" placeholder="Eingekaufte Artikel, Bemerkungen…"></textarea>
+
+    <label style="margin-top:12px">Belege / Dateien</label>
+    <div class="beleg-list" id="impBelegList"></div>
+    <input type="file" id="impBelegInput" multiple hidden onchange="onBelegAdd(event,'imp')">
+    <div class="hint" id="impBelegStatus" style="margin-top:4px"></div>
     <button class="btn accent" onclick="saveImpOverride()">Änderungen speichern</button>
     <button class="btn danger" onclick="hideImpEntry()">Eintrag ausblenden</button>
     <button class="btn ghost" onclick="resetImpOverride()">Auf Original zurücksetzen</button>
@@ -379,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.7';
+const APP_VERSION = 'v3.8';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -892,7 +915,9 @@ function renderList(){
           <div class="t2">${highlight(sub)}${estMark}</div>
         </div>
         <div class="amt">${highlight(CHF(e.amount))}${isImp?'<div class="locked">↻ Import</div>':''}</div>
-      </div>`;
+      </div>
+      ${(BELEGE[e.id]||BELEGE[e.baseId]||[]).length?belegPreviewHtml(e.id||e.baseId):''}
+    </div>`;
     });
   });
   body.innerHTML = html;
@@ -1073,6 +1098,10 @@ function openSheet(id){
   onRepeatChange();
   document.getElementById('suggestBox').innerHTML='';
   document.getElementById('gpsBox').innerHTML='';
+  // Belege laden
+  curBelegCtx='man'; curBelegId=editId||'_new';
+  renderBelegList('man', curBelegId);
+  belegStatus('man','');
   document.getElementById('overlay').classList.add('open');
   if(!editId) fetchGpsHint();
 }
@@ -1101,6 +1130,10 @@ function openImpSheet(id){
   const hasOv=!!OVERRIDES[id];
   document.getElementById('impSheetTitle').textContent=hasOv?'Importierten Eintrag bearbeiten':'Importierten Eintrag anpassen';
   document.getElementById('impOverlay').classList.add('open');
+  // Belege laden
+  curBelegCtx='imp'; curBelegId=id;
+  renderBelegList('imp', id);
+  belegStatus('imp','');
 }
 function closeImpSheet(){ document.getElementById('impOverlay').classList.remove('open'); curImpId=null; }
 function saveImpOverride(){
@@ -1269,8 +1302,15 @@ function saveEntry(){
   const prev = editId ? MAN.find(x=>x.id===editId) : null;
   const repeat2 = repeat;
   const interval = (repeat==='monthly'||repeat==='variable') ? (+document.getElementById('mInterval').value||1) : 1;
-  const obj={ id:editId||uid(), desc, amount, date, cat, fix:curFlag, note, repeat:repeat2, interval, wohnen:document.getElementById('mWohnen').checked };
+  const newId = editId||uid();
+  const obj={ id:newId, desc, amount, date, cat, fix:curFlag, note, repeat:repeat2, interval, wohnen:document.getElementById('mWohnen').checked };
   if(repeat==='variable'){ obj.actuals = (prev && prev.actuals) ? prev.actuals : {}; }
+  // Belege: _new → echte ID migrieren
+  if(!editId && BELEGE['_new'] && BELEGE['_new'].length){
+    BELEGE[newId] = BELEGE['_new'];
+    delete BELEGE['_new'];
+    persistBelege();
+  }
   // IBAN merken: manuelles Feld > frisch aus QR > bestehende
   const fieldIban = (document.getElementById('mIban').value||'').replace(/\s+/g,'').toUpperCase();
   const keepIban = (prev && prev.iban) ? prev.iban : '';
@@ -1351,7 +1391,7 @@ let toastT;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
 
 /* ============ Start ============ */
-restore(); loadGhConfig(); loadSyncConfig(); loadAnthropicKey(); renderAll(); renderVersion(); cloudAutoLoad();
+restore(); restoreBelege(); loadGhConfig(); loadSyncConfig(); loadAnthropicKey(); renderAll(); renderVersion(); cloudAutoLoad();
 
 /* ============ QR-Scan (Schweizer QR-Rechnung) ============ */
 let qrStream=null, qrRAF=null, qrLib=null;
@@ -1627,6 +1667,166 @@ function applyReceipt(){
   onDescInput();
   toast('Übernommen – bitte Kategorie und Typ prüfen');
 }
+
+/* ============ Beleg-System (Fotos / Dateien) ============ */
+// Belege: { [entryId]: [ {name, path, url} ] }
+// path = 'belege/<entryId>/<name>' im lebenskosten-daten Repo
+// url = GitHub raw URL (nach Upload)
+let BELEGE = {};  // gecacht im localStorage
+let curBelegCtx = null;  // 'man' | 'imp'
+let curBelegId  = null;  // entryId für aktuelles Sheet
+
+/* Laden / Speichern */
+function persistBelege(){ try{ localStorage.setItem('lk_belege', JSON.stringify(BELEGE)); }catch(e){} }
+function restoreBelege(){ try{ const r=localStorage.getItem('lk_belege'); if(r) BELEGE=JSON.parse(r); }catch(e){} }
+
+/* Hilfsfunktionen */
+function belegStatus(ctx, msg, err){
+  const el=document.getElementById(ctx==='man'?'mBelegStatus':'impBelegStatus');
+  if(el){ el.textContent=msg||''; el.style.color=err?'#B3261E':'var(--ink-soft)'; }
+}
+function fileToB64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=rej; r.readAsDataURL(file); }); }
+
+/* GitHub Upload eines Belegs */
+async function uploadBeleg(entryId, file){
+  if(!syncReady()){ throw new Error('Kein Cloud-Sync Token – bitte im Daten-Tab eintragen'); }
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path = `belege/${entryId}/${safeName}`;
+  const b64 = await fileToB64(file);
+  // SHA holen falls Datei bereits existiert
+  let sha = null;
+  try{
+    const r=await fetch(`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${path}`,
+      { headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json' }});
+    if(r.ok){ const j=await r.json(); sha=j.sha; }
+  }catch(e){}
+  const body={ message:`Beleg ${safeName} für ${entryId}`, content:b64 };
+  if(sha) body.sha=sha;
+  const r=await fetch(`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${path}`,{
+    method:'PUT',
+    headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
+    body:JSON.stringify(body)
+  });
+  if(!r.ok){ const t=await r.text(); throw new Error('GitHub '+r.status+': '+t.slice(0,60)); }
+  const raw=`https://raw.githubusercontent.com/${GH.owner}/${SY.repo}/main/${path}`;
+  return { name:safeName, path, url:raw };
+}
+
+/* Beleg löschen auf GitHub */
+async function deleteBeleg(entryId, beleg){
+  if(!syncReady()) return;
+  try{
+    const r=await fetch(`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${beleg.path}`,
+      { headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json' }});
+    if(!r.ok) return;
+    const j=await r.json();
+    await fetch(`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${beleg.path}`,{
+      method:'DELETE',
+      headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
+      body:JSON.stringify({ message:`Beleg ${beleg.name} gelöscht`, sha:j.sha })
+    });
+  }catch(e){}
+}
+
+/* Datei-Auswahl: Kamera / Galerie / Datei */
+function openBelegPicker(ctx, id){
+  curBelegCtx=ctx; curBelegId=id;
+  const inp=document.getElementById(ctx==='man'?'mBelegInput':'impBelegInput');
+  if(inp) inp.click();
+}
+
+/* Datei(en) hochladen */
+async function onBelegAdd(ev, ctx){
+  const files=[...ev.target.files]; ev.target.value='';
+  if(!files.length) return;
+  const id=curBelegId;
+  belegStatus(ctx,'Lade hoch…');
+  if(!BELEGE[id]) BELEGE[id]=[];
+  let ok=0, fail=0;
+  for(const f of files){
+    try{
+      belegStatus(ctx,`Lade hoch: ${f.name}…`);
+      const b=await uploadBeleg(id,f);
+      BELEGE[id].push(b);
+      ok++;
+    }catch(e){ fail++; belegStatus(ctx,'✗ '+e.message, true); }
+  }
+  persistBelege();
+  renderBelegList(ctx, id);
+  if(!fail) belegStatus(ctx, ok+' Datei'+(ok===1?'':'en')+' hochgeladen ✓');
+}
+
+/* Thumbnail/Icon rendern */
+function belegThumbHtml(b, ctx, id, i){
+  const isImg=/\.(jpe?g|png|gif|webp|heic)$/i.test(b.name);
+  const isPdf=/\.pdf$/i.test(b.name);
+  const ext=b.name.split('.').pop().toUpperCase().slice(0,4);
+  const inner=isImg
+    ? `<img src="${b.url}?_=${Date.now()}" loading="lazy" onerror="this.style.display='none'">`
+    : `<div class="beleg-icon">${isPdf?'📄':'📎'}<span>${ext}</span></div>`;
+  return `<div class="beleg-thumb" onclick="openLightbox('${b.url}','${isImg?'img':'other'}','${esc(b.name)}')">
+    ${inner}
+    <button class="beleg-del" title="Löschen" onclick="event.stopPropagation();deleteOneBelegeg('${ctx}','${id}',${i})">✕</button>
+  </div>`;
+}
+
+function renderBelegList(ctx, id){
+  const listEl=document.getElementById(ctx==='man'?'mBelegList':'impBelegList');
+  if(!listEl) return;
+  const list=BELEGE[id]||[];
+  let html=list.map((b,i)=>belegThumbHtml(b,ctx,id,i)).join('');
+  html+=`<button class="beleg-add" onclick="openBelegPicker('${ctx}','${id}')"><span>📎</span><span>Hinzufügen</span></button>`;
+  listEl.innerHTML=html;
+}
+
+async function deleteOneBelegeG(ctx, id, i){
+  if(!confirm('Diesen Beleg löschen?')) return;
+  const list=BELEGE[id]||[];
+  const b=list[i]; if(!b) return;
+  belegStatus(ctx,'Lösche…');
+  await deleteBeleg(id, b);
+  list.splice(i,1);
+  if(!list.length) delete BELEGE[id]; else BELEGE[id]=list;
+  persistBelege();
+  renderBelegList(ctx, id);
+  belegStatus(ctx,'Gelöscht');
+}
+
+/* Lightbox für Vollansicht */
+function openLightbox(url, type, name){
+  const lb=document.createElement('div');
+  lb.className='lightbox';
+  if(type==='img'){
+    lb.innerHTML=`<img src="${url}" alt="${esc(name)}">`;
+  }else{
+    // PDF und andere: Download-Link anbieten
+    lb.innerHTML=`<div style="text-align:center;color:#fff">
+      <div style="font-size:48px;margin-bottom:16px">${url.endsWith('.pdf')?'📄':'📎'}</div>
+      <div style="font-size:16px;margin-bottom:20px">${esc(name)}</div>
+      <a href="${url}" target="_blank" download="${esc(name)}" style="background:var(--accent);color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700">Öffnen / Herunterladen</a>
+    </div>`;
+  }
+  lb.onclick=e=>{ if(e.target===lb||e.target.tagName==='IMG') lb.remove(); };
+  document.body.appendChild(lb);
+}
+
+/* Belege in Eintrags-Liste anzeigen (Thumbnails unter dem Eintrag) */
+function belegPreviewHtml(id){
+  const list=BELEGE[id]||[];
+  if(!list.length) return '';
+  const thumbs=list.slice(0,3).map(b=>{
+    const isImg=/\.(jpe?g|png|gif|webp|heic)$/i.test(b.name);
+    return `<span onclick="event.stopPropagation();openLightbox('${b.url}','${isImg?'img':'other'}','${esc(b.name)}')"
+      style="display:inline-block;width:36px;height:36px;border-radius:5px;overflow:hidden;border:1px solid var(--line);cursor:pointer;background:var(--bg);vertical-align:middle;margin-right:4px">
+      ${isImg?`<img src="${b.url}" style="width:100%;height:100%;object-fit:cover">`:`<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:18px">${b.name.endsWith('.pdf')?'📄':'📎'}</div>`}
+    </span>`;
+  }).join('');
+  const more=list.length>3?`<span style="font-size:11px;color:var(--ink-soft)">+${list.length-3}</span>`:'';
+  return `<div style="margin-top:6px">${thumbs}${more}</div>`;
+}
+
+/* deleteOneBelegeG global zugänglich machen */
+window.deleteOneBelegeG=deleteOneBelegeG;
 
 /* ============ Zurück-Button (Android PWA) ============ */
 function anySheetOpen(){
