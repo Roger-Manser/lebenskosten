@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.2 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.3 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8.2';
+const APP_VERSION = 'v3.8.3';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1677,6 +1677,27 @@ let curBelegId  = null;  // entryId für aktuelles Sheet
 function persistBelege(){ try{ localStorage.setItem('lk_belege', JSON.stringify(BELEGE)); }catch(e){} }
 function restoreBelege(){ try{ const r=localStorage.getItem('lk_belege'); if(r) BELEGE=JSON.parse(r); }catch(e){} }
 
+/* Bild via GitHub API mit Token laden → Blob-URL (gecacht) */
+const blobCache={};
+async function loadBelegUrl(b){
+  if(blobCache[b.path]) return blobCache[b.path];
+  try{
+    const headers={'Accept':'application/vnd.github+json'};
+    if(SY.token) headers['Authorization']='Bearer '+SY.token;
+    const r=await fetch(b.url, {headers});
+    if(!r.ok) throw new Error(r.status);
+    const j=await r.json();
+    const bin=atob(j.content.replace(/\n/g,''));
+    const arr=new Uint8Array(bin.length).map((_,i)=>bin.charCodeAt(i));
+    const ext=(b.name.split('.').pop()||'').toLowerCase();
+    const mime=ext==='pdf'?'application/pdf':ext==='png'?'image/png':ext==='gif'?'image/gif':'image/jpeg';
+    const blob=new Blob([arr],{type:mime});
+    const url=URL.createObjectURL(blob);
+    blobCache[b.path]=url;
+    return url;
+  }catch(e){ return ''; }
+}
+
 /* Hilfsfunktionen */
 function belegStatus(ctx, msg, err){
   const el=document.getElementById(ctx==='man'?'mBelegStatus':'impBelegStatus');
@@ -1705,8 +1726,8 @@ async function uploadBeleg(entryId, file){
     body:JSON.stringify(body)
   });
   if(!r.ok){ const t=await r.text(); throw new Error('GitHub '+r.status+': '+t.slice(0,60)); }
-  const raw=`https://raw.githubusercontent.com/${GH.owner}/${SY.repo}/main/${path}`;
-  return { name:safeName, path, url:raw };
+  const apiUrl=`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${path}`;
+  return { name:safeName, path, url:apiUrl };
 }
 
 /* Beleg löschen auf GitHub */
@@ -1753,77 +1774,95 @@ async function onBelegAdd(ev, ctx){
   if(!fail) belegStatus(ctx, ok+' Datei'+(ok===1?'':'en')+' hochgeladen ✓');
 }
 
-/* Thumbnail/Icon rendern */
-function belegThumbHtml(b, ctx, id, i){
+/* Thumbnail/Icon rendern – mit Lazy-Load via Blob-URL */
+async function belegThumbHtml(b, ctx, id, i){
   const isImg=/\.(jpe?g|png|gif|webp|heic)$/i.test(b.name);
   const isPdf=/\.pdf$/i.test(b.name);
   const ext=b.name.split('.').pop().toUpperCase().slice(0,4);
-  const inner=isImg
-    ? `<img src="${b.url}?_=${Date.now()}" loading="lazy" onerror="this.style.display='none'">`
-    : `<div class="beleg-icon">${isPdf?'📄':'📎'}<span>${ext}</span></div>`;
-  return `<div class="beleg-thumb" onclick="openLightbox('${b.url}','${isImg?'img':'other'}','${esc(b.name)}')">
+  let inner;
+  if(isImg){
+    const src=await loadBelegUrl(b);
+    inner=src?`<img src="${src}" style="width:100%;height:100%;object-fit:cover">`
+              :`<div class="beleg-icon">🖼️<span>${ext}</span></div>`;
+  }else{
+    inner=`<div class="beleg-icon">${isPdf?'📄':'📎'}<span>${ext}</span></div>`;
+  }
+  return `<div class="beleg-thumb" onclick="openBelegLightbox('${ctx}','${id}',${i})">
     ${inner}
-    <button class="beleg-del" title="Löschen" onclick="event.stopPropagation();deleteOneBelegeg('${ctx}','${id}',${i})">✕</button>
+    <button class="beleg-del" title="Löschen" onclick="event.stopPropagation();deleteBelegEntry('${ctx}','${id}',${i})">✕</button>
   </div>`;
 }
 
-function renderBelegList(ctx, id){
+async function renderBelegList(ctx, id){
   const listEl=document.getElementById(ctx==='man'?'mBelegList':'impBelegList');
   if(!listEl) return;
   const list=BELEGE[id]||[];
-  let html=list.map((b,i)=>belegThumbHtml(b,ctx,id,i)).join('');
-  html+=`<button class="beleg-add" onclick="openBelegPicker('${ctx}','${id}')"><span>📎</span><span>Hinzufügen</span></button>`;
-  listEl.innerHTML=html;
+  const thumbs=await Promise.all(list.map((b,i)=>belegThumbHtml(b,ctx,id,i)));
+  const addBtn=`<button class="beleg-add" onclick="openBelegPicker('${ctx}','${id}')"><span>📎</span><span>Hinzufügen</span></button>`;
+  listEl.innerHTML=thumbs.join('')+addBtn;
 }
 
-async function deleteOneBelegeG(ctx, id, i){
+async function deleteBelegEntry(ctx, id, i){
   if(!confirm('Diesen Beleg löschen?')) return;
   const list=BELEGE[id]||[];
   const b=list[i]; if(!b) return;
   belegStatus(ctx,'Lösche…');
   await deleteBeleg(id, b);
+  if(blobCache[b.path]){ URL.revokeObjectURL(blobCache[b.path]); delete blobCache[b.path]; }
   list.splice(i,1);
   if(!list.length) delete BELEGE[id]; else BELEGE[id]=list;
   persistBelege();
   renderBelegList(ctx, id);
   belegStatus(ctx,'Gelöscht');
 }
+window.deleteBelegEntry=deleteBelegEntry;
 
-/* Lightbox für Vollansicht */
-function openLightbox(url, type, name){
+/* Lightbox für Vollansicht (via Blob-URL) */
+async function openBelegLightbox(ctx, id, i){
+  const list=BELEGE[id]||[];
+  const b=list[i]; if(!b) return;
+  const isImg=/\.(jpe?g|png|gif|webp|heic)$/i.test(b.name);
+  const isPdf=/\.pdf$/i.test(b.name);
+  const blobUrl=await loadBelegUrl(b);
   const lb=document.createElement('div');
   lb.className='lightbox';
-  if(type==='img'){
-    lb.innerHTML=`<img src="${url}" alt="${esc(name)}">`;
+  if(isImg && blobUrl){
+    lb.innerHTML=`<img src="${blobUrl}" alt="${esc(b.name)}">`;
   }else{
-    // PDF und andere: Download-Link anbieten
     lb.innerHTML=`<div style="text-align:center;color:#fff">
-      <div style="font-size:48px;margin-bottom:16px">${url.endsWith('.pdf')?'📄':'📎'}</div>
-      <div style="font-size:16px;margin-bottom:20px">${esc(name)}</div>
-      <a href="${url}" target="_blank" download="${esc(name)}" style="background:var(--accent);color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700">Öffnen / Herunterladen</a>
+      <div style="font-size:48px;margin-bottom:16px">${isPdf?'📄':'📎'}</div>
+      <div style="font-size:16px;margin-bottom:20px">${esc(b.name)}</div>
+      ${blobUrl?`<a href="${blobUrl}" target="_blank" download="${esc(b.name)}" style="background:var(--accent);color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700">Öffnen / Herunterladen</a>`:'<span style="color:#aaa">Lade…</span>'}
     </div>`;
   }
   lb.onclick=e=>{ if(e.target===lb||e.target.tagName==='IMG') lb.remove(); };
   document.body.appendChild(lb);
 }
+window.openBelegLightbox=openBelegLightbox;
 
-/* Belege in Eintrags-Liste anzeigen (Thumbnails unter dem Eintrag) */
+/* Belege in Eintrags-Liste anzeigen (Thumbnails, lazy async) */
 function belegPreviewHtml(id){
   const list=BELEGE[id]||[];
   if(!list.length) return '';
-  const thumbs=list.slice(0,3).map(b=>{
+  const uid2=`bp_${id}_${Date.now()}`;
+  // Platzhalter rendern, dann async befüllen
+  const spans=list.slice(0,3).map((b,i)=>{
     const isImg=/\.(jpe?g|png|gif|webp|heic)$/i.test(b.name);
-    return `<span onclick="event.stopPropagation();openLightbox('${b.url}','${isImg?'img':'other'}','${esc(b.name)}')"
+    const sid=`bpspan_${id}_${i}`;
+    if(isImg){
+      loadBelegUrl(b).then(src=>{
+        const el=document.getElementById(sid);
+        if(el && src) el.innerHTML=`<img src="${src}" style="width:100%;height:100%;object-fit:cover">`;
+      });
+    }
+    return `<span id="${sid}" onclick="event.stopPropagation();openBelegLightbox('man','${id}',${i})"
       style="display:inline-block;width:36px;height:36px;border-radius:5px;overflow:hidden;border:1px solid var(--line);cursor:pointer;background:var(--bg);vertical-align:middle;margin-right:4px">
-      ${isImg?`<img src="${b.url}" style="width:100%;height:100%;object-fit:cover">`:`<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:18px">${b.name.endsWith('.pdf')?'📄':'📎'}</div>`}
+      ${isImg?'🖼️':`<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:18px">${b.name.endsWith('.pdf')?'📄':'📎'}</div>`}
     </span>`;
   }).join('');
   const more=list.length>3?`<span style="font-size:11px;color:var(--ink-soft)">+${list.length-3}</span>`:'';
-  return `<div style="margin-top:6px">${thumbs}${more}</div>`;
+  return `<div style="margin-top:6px">${spans}${more}</div>`;
 }
-
-/* deleteOneBelegeG global zugänglich machen */
-window.deleteOneBelegeG=deleteOneBelegeG;
 
 /* ============ Zurück-Button (Android PWA) ============ */
 function anySheetOpen(){
