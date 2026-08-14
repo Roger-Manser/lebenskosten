@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.2 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,13 +402,14 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8';
+const APP_VERSION = 'v3.8.2';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
 let GH = { owner:'', token:'', hbRepo:'haushaltbuch', fbRepo:'fahrtenbuch' };
 let SY = { repo:'lebenskosten-daten', token:'', auto:false };   // Cloud-Sync privates Daten-Repo
 let OVERRIDES = {};  // { [importId]: { desc, amount, cat, fix, wohnen, hidden } }
+let BELEGE = {};     // { [entryId]: [ {name, path, url} ] } – Belege/Anhänge pro Eintrag
 /* importierte (read-only) Einträge, jeweils neu aus GitHub geholt: */
 let IMP = [];  // {id, src:'fuel'|'house', desc, amount, date, cat, fix, note}
 let period = 'month';   // 'month' | 'year' | 'all'
@@ -913,11 +914,10 @@ function renderList(){
         <div class="mid">
           <div class="t1">${e.fix?'<span class="fixdot" title="Zwingend"></span>':''}${highlight(e.desc)}${hasOv?'<span style="font-size:9px;color:var(--fuel);margin-left:4px">✎</span>':''}</div>
           <div class="t2">${highlight(sub)}${estMark}</div>
+          ${(BELEGE[e.id]||BELEGE[e.baseId]||[]).length ? belegPreviewHtml(e.id||e.baseId||'') : ''}
         </div>
         <div class="amt">${highlight(CHF(e.amount))}${isImp?'<div class="locked">↻ Import</div>':''}</div>
-      </div>
-      ${(BELEGE[e.id]||BELEGE[e.baseId]||[]).length?belegPreviewHtml(e.id||e.baseId):''}
-    </div>`;
+      </div>`;
     });
   });
   body.innerHTML = html;
@@ -1670,9 +1670,6 @@ function applyReceipt(){
 
 /* ============ Beleg-System (Fotos / Dateien) ============ */
 // Belege: { [entryId]: [ {name, path, url} ] }
-// path = 'belege/<entryId>/<name>' im lebenskosten-daten Repo
-// url = GitHub raw URL (nach Upload)
-let BELEGE = {};  // gecacht im localStorage
 let curBelegCtx = null;  // 'man' | 'imp'
 let curBelegId  = null;  // entryId für aktuelles Sheet
 
