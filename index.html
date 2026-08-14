@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.3 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.4 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8.3';
+const APP_VERSION = 'v3.8.4';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1673,7 +1673,12 @@ function applyReceipt(){
 let curBelegCtx = null;  // 'man' | 'imp'
 let curBelegId  = null;  // entryId für aktuelles Sheet
 
-/* Laden / Speichern */
+function belegSyncReady(){
+  // Für Belege brauchen wir: Owner (aus GH oder aus SY) + SY.repo + SY.token
+  const owner = GH.owner || SY.owner || '';
+  return !!(owner && SY.repo && SY.token);
+}
+function belegOwner(){ return GH.owner || SY.owner || ''; }
 function persistBelege(){ try{ localStorage.setItem('lk_belege', JSON.stringify(BELEGE)); }catch(e){} }
 function restoreBelege(){ try{ const r=localStorage.getItem('lk_belege'); if(r) BELEGE=JSON.parse(r); }catch(e){} }
 
@@ -1707,47 +1712,54 @@ function fileToB64(file){ return new Promise((res,rej)=>{ const r=new FileReader
 
 /* GitHub Upload eines Belegs */
 async function uploadBeleg(entryId, file){
-  if(!syncReady()){ throw new Error('Kein Cloud-Sync Token – bitte im Daten-Tab eintragen'); }
+  const owner=belegOwner();
+  if(!belegSyncReady()){ throw new Error('Owner und Token fehlen – bitte im Daten-Tab eintragen (Import-Owner + Cloud-Sync-Token)'); }
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
   const path = `belege/${entryId}/${safeName}`;
   const b64 = await fileToB64(file);
-  // SHA holen falls Datei bereits existiert
   let sha = null;
   try{
-    const r=await fetch(`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${path}`,
+    const r=await fetch(`https://api.github.com/repos/${owner}/${SY.repo}/contents/${path}`,
       { headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json' }});
     if(r.ok){ const j=await r.json(); sha=j.sha; }
   }catch(e){}
-  const body={ message:`Beleg ${safeName} für ${entryId}`, content:b64 };
+  const body={ message:`Beleg ${safeName} fuer ${entryId}`, content:b64 };
   if(sha) body.sha=sha;
-  const r=await fetch(`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${path}`,{
+  const r=await fetch(`https://api.github.com/repos/${owner}/${SY.repo}/contents/${path}`,{
     method:'PUT',
     headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
     body:JSON.stringify(body)
   });
   if(!r.ok){ const t=await r.text(); throw new Error('GitHub '+r.status+': '+t.slice(0,60)); }
-  const apiUrl=`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${path}`;
+  const apiUrl=`https://api.github.com/repos/${owner}/${SY.repo}/contents/${path}`;
   return { name:safeName, path, url:apiUrl };
 }
 
-/* Beleg löschen auf GitHub */
+/* Beleg loeschen auf GitHub */
 async function deleteBeleg(entryId, beleg){
-  if(!syncReady()) return;
+  const owner=belegOwner();
+  if(!belegSyncReady()) return;
   try{
-    const r=await fetch(`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${beleg.path}`,
+    const r=await fetch(`https://api.github.com/repos/${owner}/${SY.repo}/contents/${beleg.path}`,
       { headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json' }});
     if(!r.ok) return;
     const j=await r.json();
-    await fetch(`https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${beleg.path}`,{
+    await fetch(`https://api.github.com/repos/${owner}/${SY.repo}/contents/${beleg.path}`,{
       method:'DELETE',
       headers:{ 'Authorization':'Bearer '+SY.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
-      body:JSON.stringify({ message:`Beleg ${beleg.name} gelöscht`, sha:j.sha })
+      body:JSON.stringify({ message:`Beleg ${beleg.name} geloescht`, sha:j.sha })
     });
   }catch(e){}
 }
 
 /* Datei-Auswahl: Kamera / Galerie / Datei */
 function openBelegPicker(ctx, id){
+  if(!belegSyncReady()){
+    const msg='Bitte zuerst im Tab «Daten» den Import-Owner (Roger-Manser) und den Cloud-Sync-Token eintragen.';
+    belegStatus(ctx, msg, true);
+    toast(msg);
+    return;
+  }
   curBelegCtx=ctx; curBelegId=id;
   const inp=document.getElementById(ctx==='man'?'mBelegInput':'impBelegInput');
   if(inp) inp.click();
@@ -1760,18 +1772,19 @@ async function onBelegAdd(ev, ctx){
   const id=curBelegId;
   belegStatus(ctx,'Lade hoch…');
   if(!BELEGE[id]) BELEGE[id]=[];
-  let ok=0, fail=0;
+  let ok=0, fail=0, lastErr='';
   for(const f of files){
     try{
       belegStatus(ctx,`Lade hoch: ${f.name}…`);
       const b=await uploadBeleg(id,f);
       BELEGE[id].push(b);
       ok++;
-    }catch(e){ fail++; belegStatus(ctx,'✗ '+e.message, true); }
+    }catch(e){ fail++; lastErr=e.message; belegStatus(ctx,'✗ '+e.message, true); toast('✗ Upload: '+e.message); }
   }
   persistBelege();
-  renderBelegList(ctx, id);
+  await renderBelegList(ctx, id);
   if(!fail) belegStatus(ctx, ok+' Datei'+(ok===1?'':'en')+' hochgeladen ✓');
+  else if(ok>0) belegStatus(ctx, ok+' hochgeladen, '+fail+' Fehler: '+lastErr, true);
 }
 
 /* Thumbnail/Icon rendern – mit Lazy-Load via Blob-URL */
