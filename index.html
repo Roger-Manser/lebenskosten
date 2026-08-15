@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.5 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.6 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8.5';
+const APP_VERSION = 'v3.8.6';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1848,7 +1848,7 @@ async function deleteBelegEntry(ctx, id, i){
 }
 window.deleteBelegEntry=deleteBelegEntry;
 
-/* Lightbox für Vollansicht (via Blob-URL) */
+/* Lightbox für Vollansicht mit Zoom (Pinch / Mausrad / Doppeltipp) */
 async function openBelegLightbox(ctx, id, i){
   const list=BELEGE[id]||[];
   const b=list[i]; if(!b) return;
@@ -1857,16 +1857,110 @@ async function openBelegLightbox(ctx, id, i){
   const blobUrl=await loadBelegUrl(b);
   const lb=document.createElement('div');
   lb.className='lightbox';
+  lb.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:50;display:flex;align-items:center;justify-content:center;touch-action:none;overflow:hidden;cursor:zoom-in';
+
   if(isImg && blobUrl){
-    lb.innerHTML=`<img src="${blobUrl}" alt="${esc(b.name)}">`;
+    const img=document.createElement('img');
+    img.src=blobUrl; img.alt=esc(b.name);
+    img.style.cssText='max-width:96vw;max-height:90vh;border-radius:8px;object-fit:contain;transform-origin:center center;transition:transform .15s;user-select:none;pointer-events:none';
+    lb.appendChild(img);
+
+    // Schliessen-Button
+    const closeBtn=document.createElement('button');
+    closeBtn.textContent='✕';
+    closeBtn.style.cssText='position:absolute;top:16px;right:16px;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:22px;width:42px;height:42px;border-radius:50%;cursor:pointer;z-index:1';
+    closeBtn.onclick=()=>lb.remove();
+    lb.appendChild(closeBtn);
+
+    // Zoom-Info
+    const info=document.createElement('div');
+    info.style.cssText='position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.6);font-size:12px;pointer-events:none';
+    info.textContent='Pinch / Mausrad zum Zoomen · Doppeltippen zum Zurücksetzen';
+    lb.appendChild(info);
+
+    let scale=1, tx=0, ty=0;
+    const MAX=5, MIN=0.5;
+
+    function applyTransform(smooth){
+      img.style.transition=smooth?'transform .2s':'none';
+      img.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;
+      lb.style.cursor=scale>1?'grab':'zoom-in';
+    }
+
+    // Mausrad-Zoom
+    lb.addEventListener('wheel', e=>{
+      e.preventDefault();
+      const delta=e.deltaY>0?-0.15:0.15;
+      scale=Math.min(MAX,Math.max(MIN,scale+delta));
+      applyTransform(false);
+    },{passive:false});
+
+    // Doppelklick / Doppeltipp: zurücksetzen oder auf 2x zoomen
+    let lastTap=0;
+    lb.addEventListener('dblclick', ()=>{ scale=scale>1?1:2; tx=0; ty=0; applyTransform(true); });
+    lb.addEventListener('touchend', e=>{
+      const now=Date.now();
+      if(now-lastTap<300 && e.touches.length===0){ scale=scale>1?1:2; tx=0; ty=0; applyTransform(true); }
+      lastTap=now;
+    });
+
+    // Drag (wenn gezoomt)
+    let dragging=false, dx=0, dy=0, startX=0, startY=0;
+    lb.addEventListener('mousedown', e=>{
+      if(scale<=1||e.target===closeBtn) return;
+      dragging=true; startX=e.clientX-tx; startY=e.clientY-ty;
+      lb.style.cursor='grabbing';
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!dragging) return;
+      tx=e.clientX-startX; ty=e.clientY-startY;
+      applyTransform(false);
+    });
+    window.addEventListener('mouseup', ()=>{ dragging=false; if(scale>1) lb.style.cursor='grab'; });
+
+    // Pinch-to-Zoom (Touch)
+    let lastDist=0, pinching=false, pinchStartScale=1;
+    let dragTouch=false, touchStartX=0, touchStartY=0, touchTx=0, touchTy=0;
+    lb.addEventListener('touchstart', e=>{
+      if(e.touches.length===2){
+        pinching=true; dragTouch=false;
+        lastDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+        pinchStartScale=scale;
+      }else if(e.touches.length===1 && scale>1){
+        dragTouch=true;
+        touchStartX=e.touches[0].clientX-tx;
+        touchStartY=e.touches[0].clientY-ty;
+      }
+    },{passive:true});
+    lb.addEventListener('touchmove', e=>{
+      e.preventDefault();
+      if(e.touches.length===2 && pinching){
+        const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+        scale=Math.min(MAX,Math.max(MIN,pinchStartScale*(dist/lastDist)));
+        applyTransform(false);
+      }else if(e.touches.length===1 && dragTouch){
+        tx=e.touches[0].clientX-touchStartX;
+        ty=e.touches[0].clientY-touchStartY;
+        applyTransform(false);
+      }
+    },{passive:false});
+    lb.addEventListener('touchend', e=>{ if(e.touches.length<2) pinching=false; if(e.touches.length===0) dragTouch=false; });
+
+    // Schliessen nur wenn nicht gezoomt und auf Hintergrund getippt
+    lb.addEventListener('click', e=>{
+      if(e.target===lb && scale<=1.05) lb.remove();
+    });
+
   }else{
+    // Nicht-Bild: Download-Dialog
     lb.innerHTML=`<div style="text-align:center;color:#fff">
       <div style="font-size:48px;margin-bottom:16px">${isPdf?'📄':'📎'}</div>
       <div style="font-size:16px;margin-bottom:20px">${esc(b.name)}</div>
       ${blobUrl?`<a href="${blobUrl}" target="_blank" download="${esc(b.name)}" style="background:var(--accent);color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700">Öffnen / Herunterladen</a>`:'<span style="color:#aaa">Lade…</span>'}
+      <div style="margin-top:20px"><button onclick="this.closest('.lightbox').remove()" style="background:none;border:1px solid rgba(255,255,255,.3);color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer">Schliessen</button></div>
     </div>`;
+    lb.addEventListener('click', e=>{ if(e.target===lb) lb.remove(); });
   }
-  lb.onclick=e=>{ if(e.target===lb||e.target.tagName==='IMG') lb.remove(); };
   document.body.appendChild(lb);
 }
 window.openBelegLightbox=openBelegLightbox;
