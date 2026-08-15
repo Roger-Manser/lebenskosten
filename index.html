@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.4 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.5 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8.4';
+const APP_VERSION = 'v3.8.5';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1689,18 +1689,30 @@ async function loadBelegUrl(b){
   try{
     const headers={'Accept':'application/vnd.github+json'};
     if(SY.token) headers['Authorization']='Bearer '+SY.token;
-    const r=await fetch(b.url, {headers});
-    if(!r.ok) throw new Error(r.status);
+    const r=await fetch(b.url, {headers, cache:'no-store'});
+    if(!r.ok){
+      console.error('loadBelegUrl HTTP', r.status, b.url);
+      return '';
+    }
     const j=await r.json();
-    const bin=atob(j.content.replace(/\n/g,''));
-    const arr=new Uint8Array(bin.length).map((_,i)=>bin.charCodeAt(i));
+    if(!j.content){ console.error('loadBelegUrl: kein content-Feld', j); return ''; }
+    const bin=atob(j.content.replace(/[\n\r]/g,''));
+    const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
     const ext=(b.name.split('.').pop()||'').toLowerCase();
-    const mime=ext==='pdf'?'application/pdf':ext==='png'?'image/png':ext==='gif'?'image/gif':'image/jpeg';
+    const mime={
+      'jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png',
+      'gif':'image/gif','webp':'image/webp','heic':'image/heic',
+      'heif':'image/heif','pdf':'application/pdf'
+    }[ext] || 'application/octet-stream';
     const blob=new Blob([arr],{type:mime});
     const url=URL.createObjectURL(blob);
     blobCache[b.path]=url;
     return url;
-  }catch(e){ return ''; }
+  }catch(e){
+    console.error('loadBelegUrl Fehler:', e.message, b);
+    return '';
+  }
 }
 
 /* Hilfsfunktionen */
@@ -1714,7 +1726,13 @@ function fileToB64(file){ return new Promise((res,rej)=>{ const r=new FileReader
 async function uploadBeleg(entryId, file){
   const owner=belegOwner();
   if(!belegSyncReady()){ throw new Error('Owner und Token fehlen – bitte im Daten-Tab eintragen (Import-Owner + Cloud-Sync-Token)'); }
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  // Dateiname bereinigen: Sonderzeichen ersetzen, doppelte Erweiterungen entfernen (z.B. .jpg.png → .jpg)
+  let safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  // Doppelte Erweiterungen entfernen: .jpg.png → .jpg, .jpeg.jpg → .jpeg
+  safeName = safeName.replace(/\.(jpe?g|png|gif|webp|heic|pdf)(\.(jpe?g|png|gif|webp|heic|pdf))+$/i, (m)=>{
+    const parts=m.split('.').filter(Boolean);
+    return '.'+parts[0];
+  });
   const path = `belege/${entryId}/${safeName}`;
   const b64 = await fileToB64(file);
   let sha = null;
