@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.6 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.7 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8.6';
+const APP_VERSION = 'v3.8.7';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1879,10 +1879,10 @@ async function openBelegLightbox(ctx, id, i){
     lb.appendChild(info);
 
     let scale=1, tx=0, ty=0;
-    const MAX=5, MIN=0.5;
+    const MAX=5, MIN=1;
 
     function applyTransform(smooth){
-      img.style.transition=smooth?'transform .2s':'none';
+      img.style.transition=smooth?'transform .15s ease':'none';
       img.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;
       lb.style.cursor=scale>1?'grab':'zoom-in';
     }
@@ -1890,61 +1890,77 @@ async function openBelegLightbox(ctx, id, i){
     // Mausrad-Zoom
     lb.addEventListener('wheel', e=>{
       e.preventDefault();
-      const delta=e.deltaY>0?-0.15:0.15;
-      scale=Math.min(MAX,Math.max(MIN,scale+delta));
+      const factor=e.deltaY>0?0.85:1.15;
+      scale=Math.min(MAX,Math.max(MIN,scale*factor));
+      if(scale<=MIN){ tx=0; ty=0; }
       applyTransform(false);
     },{passive:false});
 
-    // Doppelklick / Doppeltipp: zurücksetzen oder auf 2x zoomen
-    let lastTap=0;
-    lb.addEventListener('dblclick', ()=>{ scale=scale>1?1:2; tx=0; ty=0; applyTransform(true); });
-    lb.addEventListener('touchend', e=>{
-      const now=Date.now();
-      if(now-lastTap<300 && e.touches.length===0){ scale=scale>1?1:2; tx=0; ty=0; applyTransform(true); }
-      lastTap=now;
-    });
+    // Doppelklick
+    lb.addEventListener('dblclick', ()=>{ scale=scale>1?1:2.5; tx=0; ty=0; applyTransform(true); });
 
-    // Drag (wenn gezoomt)
-    let dragging=false, dx=0, dy=0, startX=0, startY=0;
+    // Maus-Drag
+    let dragging=false, startX=0, startY=0;
     lb.addEventListener('mousedown', e=>{
-      if(scale<=1||e.target===closeBtn) return;
-      dragging=true; startX=e.clientX-tx; startY=e.clientY-ty;
-      lb.style.cursor='grabbing';
+      if(e.target===closeBtn) return;
+      if(scale>1){ dragging=true; startX=e.clientX-tx; startY=e.clientY-ty; lb.style.cursor='grabbing'; }
     });
     window.addEventListener('mousemove', e=>{
       if(!dragging) return;
-      tx=e.clientX-startX; ty=e.clientY-startY;
-      applyTransform(false);
+      tx=e.clientX-startX; ty=e.clientY-startY; applyTransform(false);
     });
     window.addEventListener('mouseup', ()=>{ dragging=false; if(scale>1) lb.style.cursor='grab'; });
 
-    // Pinch-to-Zoom (Touch)
-    let lastDist=0, pinching=false, pinchStartScale=1;
-    let dragTouch=false, touchStartX=0, touchStartY=0, touchTx=0, touchTy=0;
+    // Touch: Pinch-Zoom + Drag – ALLES mit active listeners (kein passive!)
+    let t1=null,t2=null, pinchStart=1, pinchDist=0;
+    let touchDragX=0, touchDragY=0;
+    let lastTap=0;
+
+    function getTouches(e){ return [...e.touches]; }
+    function dist2(a,b){ return Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY); }
+
     lb.addEventListener('touchstart', e=>{
-      if(e.touches.length===2){
-        pinching=true; dragTouch=false;
-        lastDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
-        pinchStartScale=scale;
-      }else if(e.touches.length===1 && scale>1){
-        dragTouch=true;
-        touchStartX=e.touches[0].clientX-tx;
-        touchStartY=e.touches[0].clientY-ty;
+      e.preventDefault(); // WICHTIG: verhindert Browser-Zoom und -Reset
+      const touches=getTouches(e);
+      if(touches.length===2){
+        t1=touches[0]; t2=touches[1];
+        pinchDist=dist2(t1,t2);
+        pinchStart=scale;
+      }else if(touches.length===1){
+        t1=touches[0]; t2=null;
+        touchDragX=t1.clientX-tx;
+        touchDragY=t1.clientY-ty;
+        // Doppeltipp erkennen
+        const now=Date.now();
+        if(now-lastTap<280){ scale=scale>1?1:2.5; tx=0; ty=0; applyTransform(true); }
+        lastTap=now;
       }
-    },{passive:true});
+    },{passive:false});
+
     lb.addEventListener('touchmove', e=>{
       e.preventDefault();
-      if(e.touches.length===2 && pinching){
-        const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
-        scale=Math.min(MAX,Math.max(MIN,pinchStartScale*(dist/lastDist)));
+      const touches=getTouches(e);
+      if(touches.length===2 && t1 && t2){
+        // Pinch
+        const cur1=touches[0], cur2=touches[1];
+        const curDist=dist2(cur1,cur2);
+        scale=Math.min(MAX,Math.max(MIN,pinchStart*(curDist/pinchDist)));
+        if(scale<=MIN){ tx=0; ty=0; }
         applyTransform(false);
-      }else if(e.touches.length===1 && dragTouch){
-        tx=e.touches[0].clientX-touchStartX;
-        ty=e.touches[0].clientY-touchStartY;
+      }else if(touches.length===1 && t1 && !t2 && scale>1){
+        // Drag
+        tx=touches[0].clientX-touchDragX;
+        ty=touches[0].clientY-touchDragY;
         applyTransform(false);
       }
     },{passive:false});
-    lb.addEventListener('touchend', e=>{ if(e.touches.length<2) pinching=false; if(e.touches.length===0) dragTouch=false; });
+
+    lb.addEventListener('touchend', e=>{
+      e.preventDefault();
+      const touches=getTouches(e);
+      if(touches.length===0){ t1=null; t2=null; }
+      else if(touches.length===1){ t2=null; t1=touches[0]; touchDragX=t1.clientX-tx; touchDragY=t1.clientY-ty; }
+    },{passive:false});
 
     // Schliessen nur wenn nicht gezoomt und auf Hintergrund getippt
     lb.addEventListener('click', e=>{
