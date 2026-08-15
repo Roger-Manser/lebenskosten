@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.7 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.8 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8.7';
+const APP_VERSION = 'v3.8.8';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -1914,15 +1914,16 @@ async function openBelegLightbox(ctx, id, i){
     // Touch: Pinch-Zoom + Drag – ALLES mit active listeners (kein passive!)
     let t1=null,t2=null, pinchStart=1, pinchDist=0;
     let touchDragX=0, touchDragY=0;
-    let lastTap=0;
+    let lastTap=0, wasPinch=false;
 
     function getTouches(e){ return [...e.touches]; }
     function dist2(a,b){ return Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY); }
 
     lb.addEventListener('touchstart', e=>{
-      e.preventDefault(); // WICHTIG: verhindert Browser-Zoom und -Reset
+      e.preventDefault();
       const touches=getTouches(e);
       if(touches.length===2){
+        wasPinch=true;
         t1=touches[0]; t2=touches[1];
         pinchDist=dist2(t1,t2);
         pinchStart=scale;
@@ -1958,11 +1959,20 @@ async function openBelegLightbox(ctx, id, i){
     lb.addEventListener('touchend', e=>{
       e.preventDefault();
       const touches=getTouches(e);
+      // Tap auf Schliessen-Button oder Hintergrund erkennen
+      if(touches.length===0 && e.changedTouches.length===1){
+        const ct=e.changedTouches[0];
+        const el=document.elementFromPoint(ct.clientX, ct.clientY);
+        // Schliessen wenn: Button getippt, oder Hintergrund getippt und nicht gezoomt
+        if(el===closeBtn || el===closeBtn.firstChild){ lb.remove(); return; }
+        if(el===lb && scale<=1.05 && !wasPinch){ lb.remove(); return; }
+      }
+      wasPinch=false;
       if(touches.length===0){ t1=null; t2=null; }
       else if(touches.length===1){ t2=null; t1=touches[0]; touchDragX=t1.clientX-tx; touchDragY=t1.clientY-ty; }
     },{passive:false});
 
-    // Schliessen nur wenn nicht gezoomt und auf Hintergrund getippt
+    // Schliessen per Maus-Klick (Laptop)
     lb.addEventListener('click', e=>{
       if(e.target===lb && scale<=1.05) lb.remove();
     });
