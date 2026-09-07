@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.9 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.9.0 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8.9';
+const APP_VERSION = 'v3.9.0';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -494,7 +494,7 @@ async function cloudPush(silent){
   try{
     let sha=null;
     try{ const cur=await cloudGetFile(); if(cur) sha=cur.sha; }catch(e){ if(!/404/.test(e.message)) throw e; }
-    const payload = { MAN, CATS, rev:REV, updated:new Date().toISOString() };
+    const payload = { MAN, CATS, rev:REV, OVERRIDES, BELEGE, updated:new Date().toISOString() };
     const body = { message:'Lebenskosten rev '+(REV||0)+' · '+new Date().toISOString(), content:b64Encode(JSON.stringify(payload,null,2)) };
     if(sha) body.sha=sha;
     const url = `https://api.github.com/repos/${GH.owner}/${SY.repo}/contents/${SYNC_FILE}`;
@@ -523,6 +523,7 @@ async function cloudPull(){
     }
     MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=remoteRev;
     if(d.OVERRIDES && typeof d.OVERRIDES==='object') OVERRIDES=d.OVERRIDES;
+    if(d.BELEGE && typeof d.BELEGE==='object'){ BELEGE=d.BELEGE; persistBelege(); }
     persist(false); renderAll();
     syncStatus('✓ Von GitHub geladen (Rev '+remoteRev+')', 'ok');
     toast('Von GitHub geladen');
@@ -538,6 +539,7 @@ async function cloudAutoLoad(){
     if(remoteRev>=localRev){
       MAN=cur.data.MAN; if(Array.isArray(cur.data.CATS)&&cur.data.CATS.length) CATS=cur.data.CATS; REV=remoteRev;
       if(cur.data.OVERRIDES && typeof cur.data.OVERRIDES==='object') OVERRIDES=cur.data.OVERRIDES;
+      if(cur.data.BELEGE && typeof cur.data.BELEGE==='object'){ BELEGE=cur.data.BELEGE; persistBelege(); }
       persist(false); renderAll();
       syncStatus('✓ Automatisch geladen (Rev '+remoteRev+')', 'ok');
     }else{
