@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.8 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.8.9 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -402,7 +402,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.8.8';
+const APP_VERSION = 'v3.8.9';
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -522,6 +522,7 @@ async function cloudPull(){
       if(!confirm('Dein lokaler Stand (Rev '+localRev+') ist neuer als GitHub (Rev '+remoteRev+'). Trotzdem mit der älteren Version überschreiben?')){ syncStatus('Laden abgebrochen.'); return; }
     }
     MAN=d.MAN; if(Array.isArray(d.CATS)&&d.CATS.length) CATS=d.CATS; REV=remoteRev;
+    if(d.OVERRIDES && typeof d.OVERRIDES==='object') OVERRIDES=d.OVERRIDES;
     persist(false); renderAll();
     syncStatus('✓ Von GitHub geladen (Rev '+remoteRev+')', 'ok');
     toast('Von GitHub geladen');
@@ -536,6 +537,7 @@ async function cloudAutoLoad(){
     const remoteRev=+cur.data.rev||0, localRev=+REV||0;
     if(remoteRev>=localRev){
       MAN=cur.data.MAN; if(Array.isArray(cur.data.CATS)&&cur.data.CATS.length) CATS=cur.data.CATS; REV=remoteRev;
+      if(cur.data.OVERRIDES && typeof cur.data.OVERRIDES==='object') OVERRIDES=cur.data.OVERRIDES;
       persist(false); renderAll();
       syncStatus('✓ Automatisch geladen (Rev '+remoteRev+')', 'ok');
     }else{
@@ -638,6 +640,26 @@ function mapHaushalt(S){
   });
 
   // Pro Gruppe einen Eintrag erzeugen
+  // Optimierung: wenn an einem Tag nur 1 bekannter Laden + 'Ort unbekannt' → zusammenführen
+  const byDate={};
+  Object.entries(groups).forEach(([key,g])=>{
+    if(!byDate[g.datum]) byDate[g.datum]=[];
+    byDate[g.datum].push({key,g});
+  });
+  Object.values(byDate).forEach(dayGroups=>{
+    const known=dayGroups.filter(x=>x.g.ort!=='Ort unbekannt');
+    const unknown=dayGroups.filter(x=>x.g.ort==='Ort unbekannt');
+    if(known.length===1 && unknown.length>0){
+      // Alle unbekannten zum einzigen bekannten Laden zusammenführen
+      const target=known[0].g;
+      unknown.forEach(({key,g})=>{
+        target.amount=Math.round((target.amount+g.amount)*100)/100;
+        target.items=target.items.concat(g.items);
+        delete groups[key];
+      });
+    }
+  });
+
   Object.values(groups).forEach(g=>{
     // Artikel zusammenfassen: gleiche Namen addieren
     const itemMap={};
