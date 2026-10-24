@@ -17,6 +17,7 @@
   --line:#DCE4DF; --accent:#2E7D5B; --accent-soft:#E2F0E9;
   --fuel:#E8590C; --fuel-soft:#FCEAE0; --house:#2F6F6A; --house-soft:#E4EFEE;
   --man:#5A4FB5; --man-soft:#EAE8F7;
+  --rec:#1F6FB2; --rec-soft:#E1EEFA;
   --fix:#B8860B; --fix-soft:#FBF1D9;
   --radius:12px; --mono:ui-monospace,'SF Mono','Cascadia Mono','Roboto Mono',Menlo,monospace;
 }
@@ -55,6 +56,7 @@ main{flex:1;padding:14px 14px 90px;overflow-y:auto}
 .tag.fuel{background:var(--fuel-soft);color:var(--fuel)}
 .tag.house{background:var(--house-soft);color:var(--house)}
 .tag.man{background:var(--man-soft);color:var(--man)}
+.tag.rec{background:var(--rec-soft);color:var(--rec)}
 .entry .mid{flex:1;min-width:0}
 .entry .t1{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px}
 .entry .t2{font-size:12px;color:var(--ink-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -159,7 +161,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px;cursor:pointer" id="verLabel" onclick="checkVersion(true)" title="Tippen: nach Updates suchen">v3.9.4 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px;cursor:pointer" id="verLabel" onclick="checkVersion(true)" title="Tippen: nach Updates suchen">v3.9.6</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -251,6 +253,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <input id="ghDataToken" type="password" placeholder="github_pat_…" autocomplete="off">
       <div class="hint">Bei einem privaten Repo ist der Token auf <b>jedem Gerät</b> nötig – auch zum Laden. Er bleibt nur in diesem Browser. Tipp: Token nur auf dieses eine Repo berechtigen.</div>
       <button class="btn primary" onclick="saveSyncConfig()">Verbindung speichern</button>
+      <div style="font-size:13px;margin:12px 0 4px">Daten-Stand (Rev) auf diesem Gerät: <b id="syncRev">0</b></div>
       <div class="filebtns">
         <button class="btn accent" onclick="cloudPush()">↑ Hochladen</button>
         <button class="btn ghost" onclick="cloudPull()">↓ Von GitHub laden</button>
@@ -416,8 +419,10 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.9.4';
+const APP_VERSION = 'v3.9.6';
 const VERSION_HISTORY = [
+  { v:'v3.9.6', d:'24.10.2026', items:['Einträge-Liste unterscheidet jetzt: MAN = einmaliger manueller Eintrag, DAUER = manuell angelegter Dauerauftrag (blau, mit Intervall, z.B. «⟳ vierteljährlich» bzw. «⟳ variabel · monatlich»)'] },
+  { v:'v3.9.5', d:'24.10.2026', items:['Kopfzeile zeigt nur noch die Version; der Daten-Stand (Rev) steht in den Einstellungen unter Cloud-Sync'] },
   { v:'v3.9.4', d:'24.10.2026', items:['Import Haushaltbuch komplett auf die Preishistorie der Artikel umgestellt – dieselbe Quelle wie die Übersicht im Haushaltbuch (Log enthielt Doppel- und Fehlbuchungen)','Preisformeln des Haushaltbuchs übernommen: Kilopreis × Gewicht (g/kg), 5-Rappen-Rundung je Laden, Feld «betrag»','Fix: Breitenmoser 17.95 statt 35.90; korrigierte Preise (z.B. Veltliner 25.20 statt 50.20) werden übernommen','Laden-Schreibweise vereinheitlicht (SPAR/Spar), doppelte Eintrags-IDs behoben'] },
   { v:'v3.9.3', d:'24.10.2026', items:['Versionsverlauf in den Einstellungen (Software-Version)'] },
   { v:'v3.9.2', d:'24.10.2026', items:['Software-Versionsprüfung: version.json auf GitHub Pages wird mit der installierten Version verglichen','Auto-Check 10 s nach Start, alle 30 Min und beim Zurückkehren in die App','Button «Nach Updates suchen» in den Einstellungen; Tipp auf die Versionszeile im Header prüft ebenfalls','Banner «Neue Version verfügbar» mit robustem Aktualisieren (Service Worker, sonst Cache leeren + Neuladen)'] },
@@ -475,7 +480,9 @@ function restore(){
 }
 function renderVersion(){
   const el=document.getElementById('verLabel');
-  if(el) el.textContent = APP_VERSION+' · Rev '+(REV||0);
+  if(el) el.textContent = APP_VERSION;
+  const sr=document.getElementById('syncRev');
+  if(sr) sr.textContent = (REV||0);
 }
 function persistImp(){ try{ localStorage.setItem('lebenskostenImp', JSON.stringify(IMP)); }catch(e){} }
 
@@ -982,8 +989,9 @@ function renderList(){
     const sum=grp.reduce((s,e)=>s+e.amount,0);
     html += `<div class="month-head"><span class="m">${monthName(k)}</span><span class="s">${CHF(sum)}</span></div>`;
     grp.forEach(e=>{
-      const tagClass = e.src==='fuel'?'fuel':e.src==='house'?'house':'man';
-      const tagLabel = e.src==='fuel'?'AUTO':e.src==='house'?'HAUS':'MAN';
+      const isDauer = e.src==='man' && (e.repeat==='monthly' || e.repeat==='variable');   // manuell angelegter Dauerauftrag
+      const tagClass = e.src==='fuel'?'fuel':e.src==='house'?'house':isDauer?'rec':'man';
+      const tagLabel = e.src==='fuel'?'AUTO':e.src==='house'?'HAUS':isDauer?'DAUER':'MAN';
       const editable = e.src==='man';
       const notePreview = (e.note||'').split('\n')[0];
       const sub = [fmtDate(e.date), e.cat, notePreview].filter(Boolean).join(' · ');
@@ -999,7 +1007,7 @@ function renderList(){
           <div class="t2">${highlight(sub)}${estMark}</div>
           ${(BELEGE[e.id]||BELEGE[e.baseId]||[]).length ? belegPreviewHtml(e.id||e.baseId||'') : ''}
         </div>
-        <div class="amt">${highlight(CHF(e.amount))}${isImp?'<div class="locked">↻ Import</div>':''}</div>
+        <div class="amt">${highlight(CHF(e.amount))}${isImp?'<div class="locked">↻ Import</div>':''}${isDauer?'<div class="locked" style="color:var(--rec)">⟳ '+(e.repeat==='variable'?'variabel · ':'')+intervalLabel(e.interval)+'</div>':''}</div>
       </div>`;
     });
   });
