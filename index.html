@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px;cursor:pointer" id="verLabel" onclick="checkVersion(true)" title="Tippen: nach Updates suchen">v3.9.3 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px;cursor:pointer" id="verLabel" onclick="checkVersion(true)" title="Tippen: nach Updates suchen">v3.9.4 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -416,8 +416,9 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.9.3';
+const APP_VERSION = 'v3.9.4';
 const VERSION_HISTORY = [
+  { v:'v3.9.4', d:'24.10.2026', items:['Import Haushaltbuch komplett auf die Preishistorie der Artikel umgestellt – dieselbe Quelle wie die Übersicht im Haushaltbuch (Log enthielt Doppel- und Fehlbuchungen)','Preisformeln des Haushaltbuchs übernommen: Kilopreis × Gewicht (g/kg), 5-Rappen-Rundung je Laden, Feld «betrag»','Fix: Breitenmoser 17.95 statt 35.90; korrigierte Preise (z.B. Veltliner 25.20 statt 50.20) werden übernommen','Laden-Schreibweise vereinheitlicht (SPAR/Spar), doppelte Eintrags-IDs behoben'] },
   { v:'v3.9.3', d:'24.10.2026', items:['Versionsverlauf in den Einstellungen (Software-Version)'] },
   { v:'v3.9.2', d:'24.10.2026', items:['Software-Versionsprüfung: version.json auf GitHub Pages wird mit der installierten Version verglichen','Auto-Check 10 s nach Start, alle 30 Min und beim Zurückkehren in die App','Button «Nach Updates suchen» in den Einstellungen; Tipp auf die Versionszeile im Header prüft ebenfalls','Banner «Neue Version verfügbar» mit robustem Aktualisieren (Service Worker, sonst Cache leeren + Neuladen)'] },
   { v:'v3.9.1', d:'24.10.2026', items:['Import Haushaltbuch: Gewichtsartikel (kg, g, l, ml …) werden nicht mehr als Menge × Preis gerechnet – der Preis ist der bezahlte Betrag','Notiz zeigt Gewichtsartikel als «0.33 kg Name – CHF …»','Stornierte Eingänge (weg-Eintrag mit Preis) werden nicht mehr verbucht'] },
@@ -631,65 +632,76 @@ async function fetchRepoFile(repo, file){
   const j = await r.json();
   return { data: JSON.parse(b64Decode(j.content)) };
 }
+/* Haushaltbuch: Einkäufe aus der PREISHISTORIE der Artikel (wie die Übersicht im Haushaltbuch),
+   gruppiert nach Datum + Einkaufsort → 1 Zeile pro Einkauf. Preisformeln = positionsBetrag/kaufBetrag des Haushaltbuchs. */
 const MASS_UNITS = ['kg','g','l','ml','dl','cl'];
-/* Haushaltbuch: Eingänge gruppiert nach Datum + Einkaufsort → 1 Zeile pro Einkauf */
 function mapHaushalt(S){
   const out=[];
-  const log = (S && Array.isArray(S.log)) ? S.log : [];
+  const arts = (S && Array.isArray(S.artikel)) ? S.artikel : [];
 
-  // Artikel-Tabelle als Lookup aufbauen (id → artikel)
-  const artikelMap = {};
-  if(S && Array.isArray(S.artikel)){
-    S.artikel.forEach(a=>{ if(a.id) artikelMap[a.id]=a; });
+  // --- Rundung je Laden (Haushaltbuch v23.5): 0.05, ausser Läden in geschaefteOhneRundung ---
+  const ohneRundung = (S && Array.isArray(S.geschaefteOhneRundung)) ? S.geschaefteOhneRundung : ['Lidl','Aldi'];
+  function geRundet(laden){
+    const l=String(laden||'').trim().toLowerCase();
+    if(!l) return true;
+    return !ohneRundung.some(g=>{ const x=String(g).toLowerCase(); return l===x || l.includes(x); });
+  }
+  function rundeBetrag(b,laden){ b=Number(b)||0; return geRundet(laden) ? Math.round(b*20)/20 : Math.round(b*100)/100; }
+
+  // --- bezahlter Betrag einer Position (1:1 wie im Haushaltbuch) ---
+  function kaufBetrag(a,h){
+    if(!h) return 0;
+    if(h.betrag>0) return h.betrag;
+    const p=Number(h.preis)||0, m=Number(h.menge)||0;
+    if(!['kg','g'].includes(a.einheit)) return p;               // Stück-Artikel: Stückpreis
+    const mKg = a.einheit==='g' ? m/1000 : m;
+    const k = Number(a.preisProKg||a.preis)||0;                 // bekannter Kilopreis
+    if(!(mKg>0)) return p;
+    if(k>0) return Math.abs(p-k)<=Math.abs(p-k*mKg) ? rundeBetrag(p*mKg, h.kaufort||a.kaufort) : p;
+    return p;
+  }
+  function positionsBetrag(a,h){
+    if(!h) return 0;
+    if(h.betrag>0) return h.betrag;
+    if(['kg','g'].includes(a.einheit)) return kaufBetrag(a,h);
+    return (Number(h.preis)||0)*(Number(h.menge)||1);
   }
 
-  // Kaufort pro Log-Eintrag ermitteln
-  function getKaufort(e){
-    const art = artikelMap[e.aid]||{};
-    // art.kaufort ist der zuletzt manuell eingetragene Kaufort – zuverlässigste Quelle
-    if(art.kaufort) return art.kaufort;
-    // Fallback: preisHistorie durchsuchen (irgendeinen Kaufort nehmen, Datum egal)
-    for(const ph of art.preisHistorie||[]){
-      if(ph.kaufort) return ph.kaufort;
-    }
-    return '';
+  // --- Laden-Schreibweise vereinheitlichen (SPAR/Spar …): bevorzugt Schreibweise aus der Läden-Liste ---
+  const canon = {};
+  (S && Array.isArray(S.geschaefte) ? S.geschaefte : []).forEach(g=>{ const k=String(g).trim().toLowerCase(); if(k) canon[k]=String(g).trim(); });
+  function normOrt(o){
+    const t=String(o||'').trim();
+    if(!t) return 'Ort unbekannt';
+    const k=t.toLowerCase();
+    if(!canon[k]) canon[k]=t;
+    return canon[k];
   }
 
-  // Stornos: ein 'weg'-Eintrag MIT Preis hebt den identischen Eingang auf
-  // (gleicher Artikel, Datum, Menge, Einheit, Preis) – z.B. falsch erfasste Buchung, die im Haushaltbuch rückgängig gemacht wurde
-  const stornoKey = e => [e.aid, e.datum, +e.menge||0, e.einheit||'', +e.preis||0].join('|');
-  const storno = {};
-  log.forEach(e=>{
-    if(e.t==='weg' && !e.geloescht && (+e.preis||0)>0){
-      const k=stornoKey(e); storno[k]=(storno[k]||0)+1;
-    }
-  });
-
-  // Einträge filtern und nach Datum+Ort gruppieren
+  // --- Positionen einsammeln und nach Datum + Ort gruppieren ---
   const groups = {};
-  log.forEach(e=>{
-    const isEingang = (e.t==='ein' || e.t==='in');
-    if(!isEingang || e.geloescht) return;
-    const sk = stornoKey(e);
-    if(storno[sk]>0){ storno[sk]--; return; }
-    const menge=+e.menge||0, preis=+e.preis||0;
-    // Gewicht/Volumen (kg, g, l, ml …): 'preis' ist der bezahlte Betrag der gewogenen Menge, NICHT ein Kilopreis
-    // → nicht mit der Menge multiplizieren. Bei Stück/Packung/Kiste etc. ist 'preis' der Einzelpreis.
-    const einheit=String(e.einheit||'').trim();
-    const isMass = MASS_UNITS.indexOf(einheit.toLowerCase())>=0;
-    const amount = isMass ? Math.round(preis*100)/100 : Math.round(menge*preis*100)/100;
-    if(!(amount>0)) return;
-    const datum = e.datum||today();
-    const ort = getKaufort(e)||'Ort unbekannt';
-    const key = datum+'|'+ort;
-    if(!groups[key]) groups[key]={ datum, ort, amount:0, items:[], zeit:e.zeit||0 };
-    groups[key].amount = Math.round((groups[key].amount+amount)*100)/100;
-    groups[key].items.push({ name:e.name||'Artikel', menge:menge, einheit:isMass?einheit:'', preis:preis, total:amount });
-    if((e.zeit||0) < groups[key].zeit || !groups[key].zeit) groups[key].zeit=e.zeit||0;
+  arts.forEach(a=>{
+    (a.preisHistorie||[]).forEach(h=>{
+      if((h.typ||'ein')!=='ein') return;                       // nur Eingänge (keine aus/weg)
+      const datum = h.datum || h.kaufdatum;
+      if(!datum) return;
+      const amount = Math.round(positionsBetrag(a,h)*100)/100;
+      if(!(amount>0)) return;
+      const ort = normOrt(h.kaufort || a.kaufort);
+      const key = datum+'|'+ort;
+      if(!groups[key]) groups[key]={ datum, ort, amount:0, items:[] };
+      groups[key].amount = Math.round((groups[key].amount+amount)*100)/100;
+      const einheit = String(h.einheit||'').trim();
+      groups[key].items.push({
+        name: a.name||'Artikel',
+        menge: Number(h.menge)||0,
+        einheit: MASS_UNITS.indexOf(einheit.toLowerCase())>=0 ? einheit : '',
+        total: amount
+      });
+    });
   });
 
-  // Pro Gruppe einen Eintrag erzeugen
-  // Optimierung: wenn an einem Tag nur 1 bekannter Laden + 'Ort unbekannt' → zusammenführen
+  // Optimierung: wenn an einem Tag genau 1 bekannter Laden + 'Ort unbekannt' → zusammenführen
   const byDate={};
   Object.entries(groups).forEach(([key,g])=>{
     if(!byDate[g.datum]) byDate[g.datum]=[];
@@ -699,7 +711,6 @@ function mapHaushalt(S){
     const known=dayGroups.filter(x=>x.g.ort!=='Ort unbekannt');
     const unknown=dayGroups.filter(x=>x.g.ort==='Ort unbekannt');
     if(known.length===1 && unknown.length>0){
-      // Alle unbekannten zum einzigen bekannten Laden zusammenführen
       const target=known[0].g;
       unknown.forEach(({key,g})=>{
         target.amount=Math.round((target.amount+g.amount)*100)/100;
@@ -709,8 +720,8 @@ function mapHaushalt(S){
     }
   });
 
+  // --- Pro Gruppe einen Eintrag erzeugen ---
   Object.values(groups).forEach(g=>{
-    // Artikel zusammenfassen: gleiche Namen addieren
     const itemMap={};
     g.items.forEach(it=>{
       const k=it.name+'|'+it.einheit;
@@ -718,7 +729,7 @@ function mapHaushalt(S){
       itemMap[k].menge += it.menge;
       itemMap[k].total = Math.round((itemMap[k].total + it.total)*100)/100;
     });
-    // Notiz: • Anzahlx Name - CHF Total (bei Gewicht: • 0.33 kg Name - CHF Total), eine Zeile pro Artikel
+    // Notiz: • Anzahlx Name - CHF Total (bei Gewicht: • 544 g Name - CHF Total), eine Zeile pro Artikel
     const fmtM = n => String(Math.round(n*1000)/1000);
     const note = Object.values(itemMap)
       .map(v=> (v.einheit ? `• ${fmtM(v.menge)} ${v.einheit} ${v.name}` : `• ${fmtM(v.menge)}x ${v.name}`) + ` - CHF ${v.total.toFixed(2)}`)
