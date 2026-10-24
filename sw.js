@@ -1,5 +1,5 @@
 /* Lebenskosten Service Worker */
-const CACHE = 'lebenskosten-v36';
+const CACHE = 'lebenskosten-v39';
 const ASSETS = [
   './',
   './index.html',
@@ -36,6 +36,11 @@ self.addEventListener('fetch', e => {
   // GitHub-API-Aufrufe nie cachen – immer frisch holen (für aktuellen Import)
   if (url.hostname === 'api.github.com') {
     e.respondWith(fetch(e.request).catch(() => new Response('{}', {headers:{'Content-Type':'application/json'}})));
+    return;
+  }
+  // version.json (Versionsprüfung) nie cachen – immer frisch vom Netz
+  if(url.pathname.endsWith('/version.json')){
+    e.respondWith(fetch(e.request, {cache:'no-store'}).catch(()=>new Response('{}', {headers:{'Content-Type':'application/json'}})));
     return;
   }
   // jsQR-Bibliothek vom CDN cachen (für Offline-QR-Scan nach dem ersten Laden)

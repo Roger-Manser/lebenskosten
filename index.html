@@ -159,7 +159,7 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
     <h1>Lebenskosten</h1>
     <span class="per" id="perLabel" onclick="cyclePeriod()">DIESER MONAT ▾</span>
   </div>
-  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px" id="verLabel">v3.9.0 · Rev 0</div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:#6E8478;margin:-4px 0 8px;cursor:pointer" id="verLabel" onclick="checkVersion(true)" title="Tippen: nach Updates suchen">v3.9.3 · Rev 0</div>
   <div class="bignum">
     <div class="v" id="hTotal">0.00</div>
     <div class="l">CHF total im Zeitraum</div>
@@ -224,6 +224,20 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
       <div class="hint">Erhältlich auf <b>console.anthropic.com</b> → API Keys. Der Key bleibt nur in diesem Browser gespeichert und wird direkt an die Anthropic-API gesendet.</div>
       <button class="btn primary" onclick="saveAnthropicKey()">Key speichern</button>
       <div class="hint" id="anthropicKeyStatus" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card">
+      <h3 class="sec" style="margin-top:0">Software-Version</h3>
+      <div style="font-size:14px;line-height:1.8">
+        Installiert: <b id="verInstalled">–</b><br>
+        Neueste auf GitHub: <b id="verLatest">–</b>
+      </div>
+      <button class="btn primary" onclick="checkVersion(true)">Nach Updates suchen</button>
+      <div class="hint" id="verStatus" style="margin-top:6px">Die App prüft beim Start und danach alle 30 Minuten automatisch.</div>
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;font-weight:700;font-size:14px">Versionsverlauf</summary>
+        <div id="verHistory" style="margin-top:8px;font-size:13px;line-height:1.5"></div>
+      </details>
     </div>
 
     <div class="card">
@@ -402,7 +416,23 @@ h3.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:upperc
 /* ============ Zustand ============ */
 /* manuelle Einträge:
    { id, desc, amount, date:'YYYY-MM-DD', cat, fix:bool, note, repeat:'once'|'monthly' } */
-const APP_VERSION = 'v3.9.0';
+const APP_VERSION = 'v3.9.3';
+const VERSION_HISTORY = [
+  { v:'v3.9.3', d:'24.10.2026', items:['Versionsverlauf in den Einstellungen (Software-Version)'] },
+  { v:'v3.9.2', d:'24.10.2026', items:['Software-Versionsprüfung: version.json auf GitHub Pages wird mit der installierten Version verglichen','Auto-Check 10 s nach Start, alle 30 Min und beim Zurückkehren in die App','Button «Nach Updates suchen» in den Einstellungen; Tipp auf die Versionszeile im Header prüft ebenfalls','Banner «Neue Version verfügbar» mit robustem Aktualisieren (Service Worker, sonst Cache leeren + Neuladen)'] },
+  { v:'v3.9.1', d:'24.10.2026', items:['Import Haushaltbuch: Gewichtsartikel (kg, g, l, ml …) werden nicht mehr als Menge × Preis gerechnet – der Preis ist der bezahlte Betrag','Notiz zeigt Gewichtsartikel als «0.33 kg Name – CHF …»','Stornierte Eingänge (weg-Eintrag mit Preis) werden nicht mehr verbucht'] },
+  { v:'v3.9.0', items:['Manuell geänderte Import-Einträge (Overrides) und Beleg-Metadaten werden mit der Cloud synchronisiert'] },
+  { v:'v3.8.9', items:['Cloud-Laden: Overrides werden beim Laden von GitHub mitbehandelt'] },
+  { v:'v3.8.8', items:['Lightbox: Schliessen-Button funktioniert wieder'] },
+  { v:'v3.8.7', items:['Lightbox: Zoom (Pinch/Mausrad) bleibt erhalten'] },
+  { v:'v3.8.5', items:['Beleg-Dateinamen: keine doppelten Endungen mehr (.jpg.png)'] },
+  { v:'v3.8.4', items:['Beleg-Upload: Repo-Besitzer wird korrekt geprüft'] },
+  { v:'v3.8.3', items:['Belege aus dem privaten Repo werden über die GitHub-API als Blob geladen'] },
+  { v:'v3.8.2', items:['Fix: «BELEGE before initialization»'] },
+  { v:'v3.8.1', items:['Fix: Darstellungsfehler (doppeltes Schliess-Tag), Daten waren dadurch scheinbar weg'] },
+  { v:'v3.8', items:['Belege: Kamera, Bild oder Datei an Einträge anhängen, Speicherung im privaten GitHub-Repo','Android-Zurück-Taste schliesst die App nicht mehr'] },
+  { v:'bis v3.7', items:['Automatischer Import aus Haushaltbuch (pro Tag und Laden gruppiert, Artikel in der Notiz) und Fahrtenbuch','Manuelle Einträge mit zwingend/optional, Wohnen-Flag, wiederkehrende Kosten, Swiss-QR-Scan, Quittungs-Scan, Suche, Filtersummen','Cloud-Sync mit Revisionsnummer, PWA mit Icons und Update-Banner'] }
+];
 let MAN = [];
 let CATS = ['Miete / Wohnen','Versicherungen','Abos / Streaming','Leasing','Gesundheit','Steuern','Freizeit','Sonstiges'];
 let REV = 0;   // Daten-Revision der manuellen Einträge, zählt bei jeder Änderung hoch
@@ -601,6 +631,7 @@ async function fetchRepoFile(repo, file){
   const j = await r.json();
   return { data: JSON.parse(b64Decode(j.content)) };
 }
+const MASS_UNITS = ['kg','g','l','ml','dl','cl'];
 /* Haushaltbuch: Eingänge gruppiert nach Datum + Einkaufsort → 1 Zeile pro Einkauf */
 function mapHaushalt(S){
   const out=[];
@@ -624,20 +655,36 @@ function mapHaushalt(S){
     return '';
   }
 
+  // Stornos: ein 'weg'-Eintrag MIT Preis hebt den identischen Eingang auf
+  // (gleicher Artikel, Datum, Menge, Einheit, Preis) – z.B. falsch erfasste Buchung, die im Haushaltbuch rückgängig gemacht wurde
+  const stornoKey = e => [e.aid, e.datum, +e.menge||0, e.einheit||'', +e.preis||0].join('|');
+  const storno = {};
+  log.forEach(e=>{
+    if(e.t==='weg' && !e.geloescht && (+e.preis||0)>0){
+      const k=stornoKey(e); storno[k]=(storno[k]||0)+1;
+    }
+  });
+
   // Einträge filtern und nach Datum+Ort gruppieren
   const groups = {};
   log.forEach(e=>{
     const isEingang = (e.t==='ein' || e.t==='in');
     if(!isEingang || e.geloescht) return;
+    const sk = stornoKey(e);
+    if(storno[sk]>0){ storno[sk]--; return; }
     const menge=+e.menge||0, preis=+e.preis||0;
-    const amount=Math.round(menge*preis*100)/100;
+    // Gewicht/Volumen (kg, g, l, ml …): 'preis' ist der bezahlte Betrag der gewogenen Menge, NICHT ein Kilopreis
+    // → nicht mit der Menge multiplizieren. Bei Stück/Packung/Kiste etc. ist 'preis' der Einzelpreis.
+    const einheit=String(e.einheit||'').trim();
+    const isMass = MASS_UNITS.indexOf(einheit.toLowerCase())>=0;
+    const amount = isMass ? Math.round(preis*100)/100 : Math.round(menge*preis*100)/100;
     if(!(amount>0)) return;
     const datum = e.datum||today();
     const ort = getKaufort(e)||'Ort unbekannt';
     const key = datum+'|'+ort;
     if(!groups[key]) groups[key]={ datum, ort, amount:0, items:[], zeit:e.zeit||0 };
     groups[key].amount = Math.round((groups[key].amount+amount)*100)/100;
-    groups[key].items.push({ name:e.name||'Artikel', menge:menge, preis:preis, total:amount });
+    groups[key].items.push({ name:e.name||'Artikel', menge:menge, einheit:isMass?einheit:'', preis:preis, total:amount });
     if((e.zeit||0) < groups[key].zeit || !groups[key].zeit) groups[key].zeit=e.zeit||0;
   });
 
@@ -666,14 +713,15 @@ function mapHaushalt(S){
     // Artikel zusammenfassen: gleiche Namen addieren
     const itemMap={};
     g.items.forEach(it=>{
-      const k=it.name;
-      if(!itemMap[k]) itemMap[k]={ menge:0, total:0 };
+      const k=it.name+'|'+it.einheit;
+      if(!itemMap[k]) itemMap[k]={ name:it.name, einheit:it.einheit, menge:0, total:0 };
       itemMap[k].menge += it.menge;
       itemMap[k].total = Math.round((itemMap[k].total + it.total)*100)/100;
     });
-    // Notiz: • Anzahlx Name - CHF Total, eine Zeile pro Artikel
-    const note = Object.entries(itemMap)
-      .map(([name,v])=>`• ${v.menge}x ${name} - CHF ${v.total.toFixed(2)}`)
+    // Notiz: • Anzahlx Name - CHF Total (bei Gewicht: • 0.33 kg Name - CHF Total), eine Zeile pro Artikel
+    const fmtM = n => String(Math.round(n*1000)/1000);
+    const note = Object.values(itemMap)
+      .map(v=> (v.einheit ? `• ${fmtM(v.menge)} ${v.einheit} ${v.name}` : `• ${fmtM(v.menge)}x ${v.name}`) + ` - CHF ${v.total.toFixed(2)}`)
       .join('\n');
     out.push({
       id: 'hb_'+g.datum.replace(/-/g,'')+'_'+(g.ort==='Ort unbekannt'?'unbekannt':g.ort.toLowerCase().replace(/\s+/g,'_')),
@@ -2098,19 +2146,87 @@ if('serviceWorker' in navigator){
     if(refreshing) return; refreshing=true; window.location.reload();
   });
 }
-function showUpdateBanner(){
-  if(document.getElementById('updateBanner')) return;
-  const b=document.createElement('div');
-  b.id='updateBanner';
-  b.innerHTML='<span>Neue Version verfügbar</span><button onclick="applyUpdate()">Aktualisieren</button>';
-  document.body.appendChild(b);
+function showUpdateBanner(ver){
+  const txt = ver ? 'Neue Version '+ver+' verfügbar' : 'Neue Version verfügbar';
+  const ex=document.getElementById('updateBanner');
+  if(ex){ const sp=ex.querySelector('span'); if(sp && ver) sp.textContent=txt; return; }
+  const bn=document.createElement('div');
+  bn.id='updateBanner';
+  bn.innerHTML='<span>'+txt+'</span><button onclick="applyUpdate()">Aktualisieren</button>';
+  document.body.appendChild(bn);
 }
-function applyUpdate(){
-  const b=document.getElementById('updateBanner');
-  if(b) b.querySelector('button').textContent='Wird aktualisiert…';
-  if(swReg && swReg.waiting){ swReg.waiting.postMessage('skipWaiting'); }
-  else { window.location.reload(); }
+async function applyUpdate(){
+  const bn=document.getElementById('updateBanner');
+  if(bn) bn.querySelector('button').textContent='Wird aktualisiert…';
+  try{
+    if(swReg){
+      if(!swReg.waiting){ await swReg.update(); await new Promise(r=>setTimeout(r,1200)); }
+      if(swReg.waiting){
+        swReg.waiting.postMessage('skipWaiting');   // controllerchange lädt neu
+        setTimeout(()=>window.location.reload(), 3000);
+        return;
+      }
+    }
+  }catch(e){}
+  // Fallback: Caches leeren, Service Worker abmelden, hart neu laden
+  try{ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }catch(e){}
+  try{ const rs=await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.unregister())); }catch(e){}
+  window.location.reload();
 }
+
+/* ============ Software-Versionsprüfung (version.json auf GitHub Pages) ============ */
+function compareVersions(a,b){
+  const pa=String(a).replace(/^v/i,'').split('.').map(x=>parseInt(x,10)||0);
+  const pb=String(b).replace(/^v/i,'').split('.').map(x=>parseInt(x,10)||0);
+  const n=Math.max(pa.length,pb.length);
+  for(let i=0;i<n;i++){
+    const x=pa[i]||0, y=pb[i]||0;
+    if(x!==y) return x>y?1:-1;
+  }
+  return 0;
+}
+async function checkVersion(manual){
+  const st=document.getElementById('verStatus');
+  const setSt=t=>{ if(st) st.textContent=t; };
+  if(manual){ setSt('Suche nach Updates …'); }
+  try{
+    const r=await fetch('version.json?t='+Date.now(), { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    const latest='v'+String(j.version||'').replace(/^v/i,'');
+    const lv=document.getElementById('verLatest'); if(lv) lv.textContent=latest;
+    const hhmm=new Date().toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
+    if(compareVersions(latest, APP_VERSION)>0){
+      setSt('Neue Version '+latest+' verfügbar (installiert: '+APP_VERSION+').');
+      showUpdateBanner(latest);
+      if(manual) toast('Neue Version '+latest+' verfügbar');
+    } else {
+      setSt('✓ Du hast die neueste Version ('+APP_VERSION+') – geprüft um '+hhmm+'.');
+      if(manual){
+        toast('✓ Bereits die neueste Version ('+APP_VERSION+')');
+        if(swReg) swReg.update().catch(()=>{});
+      }
+    }
+  }catch(e){
+    if(manual){ setSt('Update-Prüfung fehlgeschlagen – offline oder version.json nicht erreichbar.'); toast('Update-Prüfung fehlgeschlagen'); }
+  }
+}
+(function(){
+  const vi=document.getElementById('verInstalled'); if(vi) vi.textContent=APP_VERSION;
+  const vh=document.getElementById('verHistory');
+  if(vh){
+    VERSION_HISTORY.forEach(h=>{
+      const hd=document.createElement('div'); hd.style.cssText='font-weight:700;margin-top:8px';
+      hd.textContent=h.v+(h.d?' · '+h.d:''); vh.appendChild(hd);
+      const ul=document.createElement('ul'); ul.style.cssText='margin:2px 0 0 18px;padding:0';
+      h.items.forEach(t=>{ const li=document.createElement('li'); li.textContent=t; ul.appendChild(li); });
+      vh.appendChild(ul);
+    });
+  }
+  setTimeout(()=>checkVersion(false), 10*1000);                 // 10 s nach Start
+  setInterval(()=>checkVersion(false), 30*60*1000);             // danach alle 30 Min
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkVersion(false); });
+})();
 
 </script>
 </body>
